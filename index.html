@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#080B12" />
+  <title>TrackIt – Study Tracker &amp; Timer</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="TrackIt" />
+  <meta name="description" content="TrackIt – study tracker and focus timer: syllabus progress, Pomodoro, flashcards, notes and insights." />
+
+  <link rel="stylesheet" href="css/fonts.css" />
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/screens.css" />
+  <link rel="stylesheet" href="css/desktop.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <aside id="sidebar" class="sidebar" aria-label="Main navigation"></aside>
+    <main id="main" class="main">
+      <div id="view" class="view"></div>
+    </main>
+    <nav id="bottomnav" class="bottomnav" aria-label="Tabs"></nav>
+  </div>
+  <div id="overlays"></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <!--
+    Plain scripts (no modules, no build step) so the app also runs when index.html is
+    opened straight from disk. Every file adds itself to the global `TI` namespace.
+    Load order matters: helpers → data layer → core → components → screens → main.
+  -->
+  <script src="js/config.js"></script>
+  <script src="js/core/util.js"></script>
+  <script src="js/api/storage.js"></script>
+  <script src="js/api/templates-data.js"></script>
+  <script src="js/api/seed.js"></script>
+  <script src="js/api/ops.js"></script>
+  <script src="js/api/local-backend.js"></script>
+  <script src="js/api/sheets-backend.js"></script>
+  <script src="js/api/api.js"></script>
+  <script src="js/core/outline.js"></script>
+  <script src="js/core/srs.js"></script>
+  <script src="js/core/stats.js"></script>
+  <script src="js/core/store.js"></script>
+  <script src="js/core/sound.js"></script>
+  <script src="js/core/timer.js"></script>
+  <script src="js/core/router.js"></script>
+  <script src="js/core/theme.js"></script>
+  <script src="js/core/layout.js"></script>
+  <script src="js/core/reminders.js"></script>
+
+  <script src="js/components/overlays.js"></script>
+  <script src="js/components/ui.js"></script>
+  <script src="js/components/charts.js"></script>
+  <script src="js/components/forms.js"></script>
+  <script src="js/components/tree.js"></script>
+  <script src="js/components/timer-card.js"></script>
+  <script src="js/components/wallpapers.js"></script>
+  <script src="js/components/sync.js"></script>
+  <script src="js/components/sidebar.js"></script>
+
+  <script src="js/screens/dashboard.js"></script>
+  <script src="js/screens/subject.js"></script>
+  <script src="js/screens/focus.js"></script>
+  <script src="js/screens/flipclock.js"></script>
+  <script src="js/screens/flashcards.js"></script>
+  <script src="js/screens/study.js"></script>
+  <script src="js/screens/notes.js"></script>
+  <script src="js/screens/schedule.js"></script>
+  <script src="js/screens/insights.js"></script>
+  <script src="js/screens/templates.js"></script>
+  <script src="js/screens/share.js"></script>
+  <script src="js/screens/projects.js"></script>
+  <script src="js/screens/settings.js"></script>
+  <script src="js/screens/pro.js"></script>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

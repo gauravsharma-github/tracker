@@ -1,0 +1,9 @@
+{
+  "name": "trackit-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TrackIt study tracker & timer – web UI (no build step, mock data layer)",
+  "scripts": {
+    "start": "npx --yes serve -l 5173 ."
+  }
+}
