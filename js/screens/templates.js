@@ -47,8 +47,11 @@
           tree = TI.outline.parse(txt);
           if (name && !$('#ai-pname').value) $('#ai-pname').value = name;
           if (cat) $('#ai-cat').value = cat;
-          const c = TI.outline.count(tree);
-          $('#ai-preview').innerHTML = tree.length ? `<div class="row small" style="margin-bottom:8px">${U.icon('check_circle', 'xs')}<b>${U.plural(c.top, 'subject')}</b> · ${U.plural(c.units, 'unit')} · ${U.plural(c.leaves, 'topic')}</div>${previewTree(tree, 120)}` : '<div class="small muted">Nothing recognised yet.</div>';
+          const wrapped = tree.length === 1 && tree[0].children.length >= 2;
+          const shown = wrapped ? tree[0].children : tree;
+          if (wrapped && !$('#ai-pname').value) $('#ai-pname').value = tree[0].title;
+          const c = TI.outline.count(shown);
+          $('#ai-preview').innerHTML = tree.length ? `<div class="row small" style="margin-bottom:8px">${U.icon('check_circle', 'xs')}${wrapped ? `<b>${U.esc(tree[0].title)}</b> ·` : ''} <b>${U.plural(c.top, 'subject')}</b> · ${U.plural(c.units, 'unit')} · ${U.plural(c.leaves, 'topic')}</div>${previewTree(shown, 120)}` : '<div class="small muted">Nothing recognised yet.</div>';
           $('[data-act="create"]').disabled = !tree.length;
         };
         ta.addEventListener('input', update);

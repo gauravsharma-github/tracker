@@ -3,7 +3,7 @@
 // Output: [{ title, done, children: [...] }] where the top level is subjects.
 (function (TI) {
   const TITLE_KEYS = ['title', 'name', 'subject', 'unit', 'chapter', 'topic', 'label', 'text'];
-  const CHILD_KEYS = ['children', 'subjects', 'units', 'chapters', 'topics', 'subtopics', 'items', 'sections', 'modules', 'lessons'];
+  const CHILD_KEYS = ['children', 'child', 'nodes', 'subjects', 'units', 'chapters', 'topics', 'subtopics', 'items', 'sections', 'modules', 'lessons'];
 
   function cleanText(s) {
     return s
@@ -29,6 +29,8 @@
     };
     if (Array.isArray(v)) return v.map(toNode).filter(Boolean);
     const ck = CHILD_KEYS.find((k) => Array.isArray(v[k]));
+    // { title: 'My exam', child: [...] } keeps its title (used as the project name)
+    if (ck && TITLE_KEYS.some((k) => typeof v[k] === 'string')) { const n = toNode(v); return n ? [n] : []; }
     if (ck) return v[ck].map(toNode).filter(Boolean);
     const n = toNode(v);
     return n ? [n] : [];
