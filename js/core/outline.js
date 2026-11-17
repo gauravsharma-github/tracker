@@ -30,7 +30,7 @@
     if (Array.isArray(v)) return v.map(toNode).filter(Boolean);
     const ck = CHILD_KEYS.find((k) => Array.isArray(v[k]));
     // { title: 'My exam', child: [...] } keeps its title (used as the project name)
-    if (ck && TITLE_KEYS.some((k) => typeof v[k] === 'string')) { const n = toNode(v); return n ? [n] : []; }
+    if (ck && TITLE_KEYS.some((k) => typeof v[k] === 'string')) { const n = toNode(v); if (n) n.root = true; return n ? [n] : []; }
     if (ck) return v[ck].map(toNode).filter(Boolean);
     const n = toNode(v);
     return n ? [n] : [];
@@ -85,6 +85,12 @@
     const fenced = t.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (fenced && /^[[{]/.test(fenced[1].trim())) { try { return fromJson(JSON.parse(fenced[1].trim())); } catch (e) { /* ignore */ } }
     return fromLines(t);
+  }
+
+  // { title: 'Project', child: [...] } → { name: 'Project', subjects: [...] }; plain lists stay as subjects.
+  function unwrap(tree) {
+    if (tree.length === 1 && (tree[0].root || tree[0].children.length >= 2)) return { name: tree[0].title, subjects: tree[0].children };
+    return { name: null, subjects: tree };
   }
 
   function count(tree) {
@@ -152,5 +158,5 @@ Return ONLY one card per line in the format:
 question :: answer
 Keep answers short (one sentence).`;
 
-  TI.outline = { parse, count, toText, parseCards, aiPrompt, aiCardsPrompt };
+  TI.outline = { parse, unwrap, count, toText, parseCards, aiPrompt, aiCardsPrompt };
 })(window.TI);

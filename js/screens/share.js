@@ -92,8 +92,8 @@
       const p = sel.activeProject();
       if (!p) return TI.ui.empty('ios_share', 'Nothing to share yet', 'Create a project and study a little first.');
       const o = opts(); const subjects = sel.subjects(p.id); const pro = sel.isPro();
-      return `<div class="topbar"><button class="icon-btn" data-act="back" aria-label="Back">${U.icon('arrow_back')}</button><h1 class="grow">Share</h1>
-          <div class="actions"><button class="icon-btn" data-act="share-native" aria-label="Share">${U.icon('share')}</button></div></div>
+      return `<div class="topbar"><button class="icon-btn" data-act="back" aria-label="Back">${U.icon('arrow_back')}</button><h1 class="grow">Share Progress</h1>
+          <div class="actions"><span class="desktop-only">${TI.ui.seg([{ id: 'progress', label: 'Progress' }, { id: 'template', label: 'Template' }], 'progress', 'share-tab', 'alt')}</span><button class="icon-btn" data-act="share-native" aria-label="Share">${U.icon('share')}</button></div></div>
         <div class="share-grid">
           <div class="share-preview">${cardHtml(o)}</div>
           <div class="share-opts">
@@ -111,6 +111,7 @@
         </div>`;
     },
     actions: {
+      'share-tab': (el) => { if (el.dataset.v === 'template') TI.router.go('/share-template/' + ((sel.activeProject() || {}).id || ''), { replace: true }); },
       'share-theme': (el) => actions.setUi({ shareOpts: { ...opts(), theme: el.dataset.v } }),
       'share-days': (el) => actions.setUi({ shareOpts: { ...opts(), days: +el.dataset.v } }),
       'share-color': (el) => { if (el.dataset.lock) return TI.screens.pro.open('share'); actions.setUi({ shareOpts: { ...opts(), color: el.dataset.color } }); },

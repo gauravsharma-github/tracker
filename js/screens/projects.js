@@ -4,14 +4,6 @@
   const { state, sel, actions } = TI.store;
   const catOf = (id) => TI.config.projectCategories.find((c) => c.id === id) || TI.config.projectCategories[3];
 
-  function shareCode(p) {
-    const tree = sel.subjects(p.id).map((s) => {
-      const walk = (pid) => TI.stats.children(state, s.id, pid).map((n) => ({ title: n.title, children: walk(n.id) }));
-      return { title: s.name, children: walk(null) };
-    });
-    return JSON.stringify({ trackitTemplate: 1, name: p.name, category: p.category, outline: TI.outline.toText(tree) });
-  }
-
   function projectRow(p) {
     const st = TI.stats; const active = sel.activeProject() && sel.activeProject().id === p.id;
     return `<div class="proj-row ${p.archived ? 'archived' : ''}" style="--c:${p.color}">
@@ -57,8 +49,8 @@
         TI.ui.openMenu(el, [
           ...(p.archived ? [] : [{ icon: 'open_in_new', label: 'Open', onClick: () => { actions.setActiveProject(p.id); TI.router.go('/'); } }]),
           { icon: 'edit', label: 'Edit name, type & colour', onClick: () => TI.forms.projectForm(p) },
-          { icon: 'group', label: 'Share as template', onClick: async () => { const ok = await U.copy(shareCode(p)); TI.ui.toast(ok ? 'Share code copied – friends paste it under Templates › From a friend' : 'Could not copy', { icon: 'content_copy', duration: 5000 }); } },
-          { icon: 'download', label: 'Export outline (.txt)', onClick: () => U.download(`${U.slug(p.name)}.txt`, JSON.parse(shareCode(p)).outline, 'text/plain') },
+          { icon: 'file_copy', label: 'Share template (.json, code, link)', onClick: () => TI.router.go('/share-template/' + p.id) },
+          { icon: 'insert_chart', label: 'Share progress', onClick: () => { actions.setActiveProject(p.id); TI.router.go('/share'); } },
           { icon: p.archived ? 'unarchive' : 'archive', label: p.archived ? 'Unarchive' : 'Archive', onClick: () => {
             if (p.archived && !sel.canAddProject()) return TI.screens.pro.open('projects');
             actions.updateProject(p.id, { archived: !p.archived });

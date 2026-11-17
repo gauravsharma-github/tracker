@@ -104,7 +104,7 @@
           <button class="icon-btn" data-act="calendar" title="Calendar" aria-label="Calendar">${U.icon('calendar_today')}</button>
           <button class="icon-btn phone-only" data-act="nav" data-to="/notes" aria-label="Notes">${U.icon('sticky_note_2')}</button>
           <button class="icon-btn phone-only" data-act="nav" data-to="/settings" aria-label="Settings">${U.icon('settings')}</button>
-          <button class="icon-btn" data-act="nav" data-to="/share" title="Share progress" aria-label="Share progress">${U.icon('share')}</button>
+          <button class="icon-btn" data-act="share-options" data-id="${p.id}" title="Share" aria-label="Share">${U.icon('share')}</button>
         </div>
       </div>`;
 

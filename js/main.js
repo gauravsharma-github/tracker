@@ -110,6 +110,7 @@
     'clock-open': (el) => openClock(el.dataset.subject || TI.timer.state.subjectId),
     'theme-toggle': () => { const next = TI.theme.current() === 'dark' ? 'light' : 'dark'; actions.updateSettings({ theme: next }); TI.theme.apply(next); },
     'note-open': (el) => TI.screens.notes.edit(el.dataset.id),
+    'share-options': (el) => TI.shareTpl.openOptions(el.dataset.id),
     'boot-retry': () => location.reload(),
     'boot-offline': async () => { await TI.api.disconnect({ keepCopy: false }); location.reload(); },
   };
@@ -179,7 +180,7 @@
     TI.timer.onChange(schedule);
     TI.timer.onTick(TI.timerCard.tick);
     TI.layout.onChange(schedule);
-    TI.router.onChange(() => { TI.ui.closeMenu(); render(); });
+    TI.router.onChange(() => { TI.ui.closeMenu(); TI.ui.closeAll(); render(); });
     render();
     setTimeout(() => TI.reminders.check(), 1500);
   }

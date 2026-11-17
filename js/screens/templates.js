@@ -28,7 +28,7 @@
     const shared = mode === 'shared';
     TI.ui.openSheet({
       title: shared ? 'Import a shared template' : 'Generate a template with AI', size: 'lg',
-      html: `${shared ? `<p class="muted small" style="margin-bottom:14px">Paste a template a friend shared with you (TrackIt share code, JSON or an indented outline).</p>` : `<div class="ai-steps">
+      html: `${shared ? `<div class="row wrap" style="margin-bottom:12px"><p class="muted small grow" style="min-width:220px">Open the <b>.json file</b> a friend shared, or paste the JSON code (an indented outline works too). Share links open TrackIt directly.</p><button class="btn sm" data-act="file">${U.icon('upload_file')}Open .json file</button></div>` : `<div class="ai-steps">
           <div class="ai-step"><span class="n">1</span><div class="grow"><b>Name your exam or project</b>
             <div class="row" style="margin-top:8px"><input class="input" id="ai-name" placeholder="e.g. AWS Solutions Architect, MBBS 2nd year" style="min-height:40px" /><button class="btn sm" data-act="copy">${U.icon('content_copy')}Copy prompt</button></div>
             <div class="small muted" style="margin-top:6px">Paste the prompt into ChatGPT, Gemini or Claude.</div></div></div>
@@ -47,9 +47,9 @@
           tree = TI.outline.parse(txt);
           if (name && !$('#ai-pname').value) $('#ai-pname').value = name;
           if (cat) $('#ai-cat').value = cat;
-          const wrapped = tree.length === 1 && tree[0].children.length >= 2;
-          const shown = wrapped ? tree[0].children : tree;
-          if (wrapped && !$('#ai-pname').value) $('#ai-pname').value = tree[0].title;
+          const u = TI.outline.unwrap(tree); const wrapped = !!u.name;
+          const shown = u.subjects;
+          if (wrapped && !$('#ai-pname').value) $('#ai-pname').value = u.name;
           const c = TI.outline.count(shown);
           $('#ai-preview').innerHTML = tree.length ? `<div class="row small" style="margin-bottom:8px">${U.icon('check_circle', 'xs')}${wrapped ? `<b>${U.esc(tree[0].title)}</b> ·` : ''} <b>${U.plural(c.top, 'subject')}</b> · ${U.plural(c.units, 'unit')} · ${U.plural(c.leaves, 'topic')}</div>${previewTree(shown, 120)}` : '<div class="small muted">Nothing recognised yet.</div>';
           $('[data-act="create"]').disabled = !tree.length;
@@ -61,9 +61,13 @@
           async copy() { const ok = await U.copy(TI.outline.aiPrompt($('#ai-name').value.trim())); TI.ui.toast(ok ? 'Prompt copied' : 'Could not copy', { icon: ok ? 'content_copy' : 'error' }); },
           create() {
             // A single top-level item (e.g. the exam name) wrapping the subjects is unwrapped
-            const wrapped = tree.length === 1 && tree[0].children.length >= 2;
-            const name = $('#ai-pname').value.trim() || (wrapped ? tree[0].title : 'My project');
-            a.close(); createFrom(name, $('#ai-cat').value, wrapped ? tree[0].children : tree);
+            const u = TI.outline.unwrap(tree);
+            const name = $('#ai-pname').value.trim() || u.name || 'My project';
+            a.close(); createFrom(name, $('#ai-cat').value, u.subjects);
+          },
+          async file() {
+            const f = await U.pickFile('.json,application/json,.txt,text/plain'); if (!f) return;
+            try { ta.value = await U.readFile(f); update(); } catch (e) { TI.ui.toast('Could not read that file', { icon: 'error' }); }
           },
         });
       },
@@ -124,6 +128,7 @@
     },
     inputs: { 'tpl-search': (el) => actions.setUi({ tplQuery: el.value }) },
     aiSheet,
+    createFrom,
   };
   TI.screens.templates = screen;
 })(window.TI);

@@ -84,7 +84,9 @@ Breakpoints live in `css/desktop.css` and `js/core/layout.js`.
 - **Schedule (day view):** plan study blocks on a timeline (click a slot to add), repeat once/daily/weekdays/weekly, mark done, start the timer from a block, “now” line, planned vs. studied time, block reminders.
 - **Insights:** week / month / 3-month ranges, this project or all; time per day stacked by subject, subject split, hours of the day, syllabus completion over time, consistency heatmap, session timeline, streaks.
 - **Templates (“Add Exam/Project”):** search and category tiles (Exam, Programming, Medical), 25 preloaded syllabi with previews, **AI generator** (copy a prompt, paste the outline back), import a template shared by a friend, or start blank. Projects can be shared as a template code or exported as an outline.
-- **Share progress:** card with progress, Spent Today / Spent Total / Parts Done and a daily bar chart; light/dark theme and colours; download, copy or share it as a PNG.
+- **Share (button on every project):** opens **Options** with two choices, as in the app:
+  - **Share Progress:** card with progress, Spent Today / Spent Total / Parts Done and a daily bar chart; light/dark theme and colours; download, copy or share it as a PNG.
+  - **Share Template:** preview the project's subjects (tap **+** to see their topics), then **Share Template as File** (`.json`), **Copy JSON code**, or **Get share link** (the whole template is packed into the link, so no server is needed). Optionally include your progress. The JSON uses the TrackIt app's format: `{ "title": "Project", "child": [ { "title": "Subject", "child": [ … ] } ] }`. Friends import it under **Templates › From a friend** (open the .json file or paste the code) or simply open the link.
 - **Settings:** connect your Google Sheet (sync status, sync now, open the sheet, connect another device), theme (dark/light/system), 12/24-hour, week start, timer lengths, alarm and volume, daily goal, daily reminder with a subtle sound, ambient sound, wallpapers, export/import a JSON backup, export sessions as CSV.
 - **TrackIt Pro:** upgrade screen with plans; the free plan limits projects/subjects and locks some sounds, wallpapers and share colours (limits and placeholder prices in `js/config.js`).
 - **Keyboard (desktop):** `Space` start/pause, `S` stop & save, `F` flip clock, `N` new subject, `G` then `D/T/S/C/I/N/P` to jump to a page, `1–4` grade a card, `Esc` close.
@@ -120,9 +122,11 @@ js/
     sound.js               Alarm, reminder and ambient sounds (Web Audio, no files)
     router.js, theme.js, layout.js, reminders.js, util.js
   components/              overlays (sheets, dialogs, menus, toasts), ui helpers, charts, forms,
-                           syllabus tree, timer card, wallpapers, sync (Google Sheet UI), sidebar / bottom tabs
+                           syllabus tree, timer card, wallpapers, sync (Google Sheet UI),
+                           template-share (JSON export, share links), sidebar / bottom tabs
   screens/                 dashboard, subject, focus, flipclock, flashcards, study, notes, schedule,
-                           insights, templates, share, projects, settings, pro
+                           insights, templates, share, share-template, import (share links),
+                           projects, settings, pro
 backend/
   Code.gs                  Google Apps Script web app (paste into your sheet)
   SETUP.md                 Step-by-step setup for the Google Sheet backend

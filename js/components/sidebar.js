@@ -11,7 +11,7 @@
     { to: '/notes', name: 'notes', icon: 'sticky_note_2', label: 'Notes' },
     { to: '/insights', name: 'insights', icon: 'insights', label: 'Insights' },
     { to: '/templates', name: 'templates', icon: 'library_add', label: 'Templates' },
-    { to: '/share', name: 'share', icon: 'ios_share', label: 'Share progress' },
+    { to: '/share', name: 'share', icon: 'ios_share', label: 'Share' },
   ];
 
   function miniTimer() {
@@ -41,7 +41,7 @@
         ${TI.ui.ring(TI.stats.projectRatio(state, p.id), '#fff', { size: 34, stroke: 3.5, label: '', })}
         <span class="grow" style="min-width:0;text-align:left"><span class="sb-pname ellipsis">${U.esc(p.name)}</span><span class="sb-psub">${U.pct(TI.stats.projectRatio(state, p.id), 1)} complete</span></span>${U.icon('unfold_more')}</button>`
         : '<button class="sb-project" data-act="new-project" style="--c:var(--primary)">' + U.icon('add') + '<span class="grow" style="text-align:left">Add exam / project</span></button>'}
-      <nav class="sb-nav">${NAV.map((n) => `<button class="sb-link ${active === n.name || (n.name === 'cards' && active === 'study') ? 'on' : ''}" data-act="nav" data-to="${n.to}">${U.icon(n.icon)}<span class="grow">${n.label}</span>${n.name === 'focus' && TI.timer.isActive() ? '<span class="live-dot"></span>' : counts[n.name] ? `<span class="badge ${n.name === 'cards' ? 'hot' : ''}">${counts[n.name]}</span>` : ''}</button>`).join('')}</nav>
+      <nav class="sb-nav">${NAV.map((n) => `<button class="sb-link ${active === n.name || (n.name === 'cards' && active === 'study') || (n.name === 'share' && active === 'share-template') ? 'on' : ''}" data-act="nav" data-to="${n.to}">${U.icon(n.icon)}<span class="grow">${n.label}</span>${n.name === 'focus' && TI.timer.isActive() ? '<span class="live-dot"></span>' : counts[n.name] ? `<span class="badge ${n.name === 'cards' ? 'hot' : ''}">${counts[n.name]}</span>` : ''}</button>`).join('')}</nav>
       <div class="sb-section"><span>Subjects</span><button class="icon-btn sm muted" data-act="new-subject" title="Add subject" aria-label="Add subject">${U.icon('add')}</button></div>
       <div class="sb-subjects">${subjects.map((s) => `<button class="sb-subj ${route.name === 'subject' && route.params[0] === s.id ? 'on' : ''}" data-act="nav" data-to="/subject/${s.id}" style="--c:${s.color}">
         <span class="sb-dot"></span><span class="grow ellipsis">${U.esc(s.name)}</span><span class="faint tiny tabular">${U.pctInt(TI.stats.subjectRatio(state, s.id))}</span></button>`).join('') || '<div class="faint small" style="padding:6px 12px">No subjects yet</div>'}</div>

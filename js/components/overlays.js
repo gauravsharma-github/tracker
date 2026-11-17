@@ -136,5 +136,8 @@
     setTimeout(kill, duration);
   }
 
-  TI.ui = Object.assign(TI.ui || {}, { openSheet, dialog, confirmDialog, promptDialog, openMenu, closeMenu, toast, overlayOpen: () => stack.length > 0 });
+  // Close every open sheet/dialog (used when the route changes, e.g. the browser Back button)
+  function closeAll() { stack.slice().forEach((s) => s.close(null)); }
+
+  TI.ui = Object.assign(TI.ui || {}, { openSheet, dialog, confirmDialog, promptDialog, openMenu, closeMenu, closeAll, toast, overlayOpen: () => stack.length > 0 });
 })(window.TI);
