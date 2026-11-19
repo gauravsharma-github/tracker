@@ -14,11 +14,12 @@
   const w = (op) => Promise.resolve(backend().write(op));
 
   const CODE_PREFIX = 'TRACKIT1:';
-  function encodeCode(url, token) { return CODE_PREFIX + btoa(unescape(encodeURIComponent(JSON.stringify({ u: url, t: token })))); }
+  // A connection code carries the sheet URL + key and, if set up, the GitHub attachment settings
+  function encodeCode(url, token, gh) { return CODE_PREFIX + btoa(unescape(encodeURIComponent(JSON.stringify({ u: url, t: token, ...(gh ? { g: gh } : {}) })))); }
   function decodeCode(code) {
     const c = String(code || '').trim();
     if (!c.startsWith(CODE_PREFIX)) return null;
-    try { const o = JSON.parse(decodeURIComponent(escape(atob(c.slice(CODE_PREFIX.length))))); return o.u && o.t ? { url: o.u, token: o.t } : null; } catch (e) { return null; }
+    try { const o = JSON.parse(decodeURIComponent(escape(atob(c.slice(CODE_PREFIX.length))))); return o.u && o.t ? { url: o.u, token: o.t, gh: o.g || null } : null; } catch (e) { return null; }
   }
   function validUrl(url) {
     return /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec\/?$/.test(url) || /^https:\/\/script\.google\.com\/a\/macros\/[\w.-]+\/s\/[\w-]+\/exec\/?$/.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url);
@@ -64,7 +65,7 @@
     // ---- Google Sheets connection ----
     connection() { const c = S.get('conn'); return c ? { url: c.url, connectedAt: c.connectedAt, sheetUrl: sheets().sheetUrl() } : null; },
     validUrl, encodeCode, decodeCode,
-    connectionCode() { const c = S.get('conn'); return c ? encodeCode(c.url, c.token) : ''; },
+    connectionCode() { const c = S.get('conn'); return c ? encodeCode(c.url, c.token, TI.github && TI.github.configured() ? TI.github.cfg() : null) : ''; },
     // Step 1: check the URL + key and see what the sheet already holds
     async testConnection(url, token) {
       if (!validUrl(url)) throw new Error('That does not look like an Apps Script web app URL (it should end in /exec).');
@@ -86,6 +87,8 @@
       if (keepCopy) await local().replaceAll(sheets().snapshot());
       S.remove('conn'); sheets().reset();
     },
+    // Apps Script version of the connected sheet (attachments need v2)
+    backendVersion: () => (api.mode() === 'sheets' ? sheets().version() : 99),
     syncNow: () => (api.mode() === 'sheets' ? sheets().refresh() : Promise.resolve()),
     syncStatus: () => (api.mode() === 'sheets' ? sheets().status() : null),
     onSyncStatus: (fn) => sheets().onStatus(fn),

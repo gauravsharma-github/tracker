@@ -43,7 +43,21 @@
       while (nid && byId.has(nid) && guard++ < 50) { add(timeByNode, nid, s.duration); nid = byId.get(nid).parentId; }
     });
 
-    return { key, byId, childrenOf, prog, subjProg, timeByNode, timeBySubject, subjDay, projDay, allDay };
+    // Last edit per project (explicit updatedAt stamps + timestamps of everything inside it)
+    const lastAct = new Map(); const pidOfSubj = new Map(state.subjects.map((s) => [s.id, s.projectId]));
+    const bumpAct = (pid, t) => { if (pid && t && t > (lastAct.get(pid) || 0)) lastAct.set(pid, t); };
+    const viaSubj = (sid, t) => bumpAct(pidOfSubj.get(sid), t);
+    state.projects.forEach((p) => { bumpAct(p.id, p.createdAt); bumpAct(p.id, p.updatedAt); });
+    state.subjects.forEach((s) => bumpAct(s.projectId, s.createdAt));
+    state.nodes.forEach((n) => { viaSubj(n.subjectId, n.createdAt); viaSubj(n.subjectId, n.doneAt); });
+    state.sessions.forEach((s) => bumpAct(s.projectId, s.start + (s.duration || 0) * 1000));
+    state.notes.forEach((m) => viaSubj(m.subjectId, m.updatedAt));
+    state.cards.forEach((c) => { viaSubj(c.subjectId, c.createdAt); viaSubj(c.subjectId, c.lastReviewed); });
+    state.reviews.forEach((r) => viaSubj(r.subjectId, r.at));
+    state.blocks.forEach((b) => viaSubj(b.subjectId, b.createdAt));
+    (state.attachments || []).forEach((a) => viaSubj(a.subjectId, a.updatedAt || a.createdAt));
+
+    return { key, byId, childrenOf, prog, subjProg, timeByNode, timeBySubject, subjDay, projDay, allDay, lastAct };
   }
 
   function idx(state) {
@@ -68,6 +82,7 @@
     projectRatio(state, pid) { return ratio(stats.projectProgress(state, pid)); },
     nodeTime(state, id) { return idx(state).timeByNode.get(id) || 0; },
     subjectTime(state, sid) { return idx(state).timeBySubject.get(sid) || 0; },
+    lastActivity(state, pid) { return Math.min(Date.now(), idx(state).lastAct.get(pid) || 0); },
     projectTime(state, pid) { return U.sum(state.subjects.filter((s) => s.projectId === pid), (s) => stats.subjectTime(state, s.id)); },
     subjectDay(state, sid, day) { const m = idx(state).subjDay.get(sid); return (m && m.get(day)) || 0; },
     projectDay(state, pid, day) { const m = idx(state).projDay.get(pid); return (m && m.get(day)) || 0; },

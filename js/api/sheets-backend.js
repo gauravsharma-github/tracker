@@ -112,7 +112,7 @@
         const fresh = normalize(j.data);
         queue.forEach((op) => apply(fresh, op)); // changes made while the request was in flight
         db = fresh; S.set(K.cache, db);
-        meta.lastSync = Date.now(); meta.lastPull = meta.lastSync; if (j.sheetUrl) meta.sheetUrl = j.sheetUrl; saveMeta();
+        meta.lastSync = Date.now(); meta.lastPull = meta.lastSync; if (j.sheetUrl) meta.sheetUrl = j.sheetUrl; meta.version = j.version || 1; saveMeta();
         setStatus({ state: queue.length ? 'pending' : 'synced', error: null, lastSync: meta.lastSync });
         if (!initial && remoteFn) remoteFn(withAccount(clone(db)));
         return db;
@@ -171,6 +171,7 @@
     onStatus(fn) { statusFns.add(fn); return () => statusFns.delete(fn); },
     onRemote(fn) { remoteFn = fn; },
     sheetUrl: () => meta.sheetUrl || (conn() && conn().sheetUrl) || null,
+    version: () => meta.version || 1,
     pending: () => queue.length,
     reset() { db = null; queue = []; saveQueue(); S.remove(K.cache); Object.assign(meta, { lastSync: null, lastPull: null, sheetUrl: null }); saveMeta(); setStatus({ state: 'idle', error: null, lastSync: null }); },
   };

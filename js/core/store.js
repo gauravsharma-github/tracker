@@ -6,7 +6,7 @@
 
   const state = {
     ready: false, rev: 0,
-    projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [],
+    projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [],
     settings: {}, account: {},
     ui: Object.assign({ expandedSubjects: {}, expandedNodes: {}, dashFilter: 'all', notesFilter: 'all', notesQuery: '', insightsRange: 'week', insightsScope: 'project', shareOpts: null }, TI.storage.get('ui', {})),
   };
@@ -22,6 +22,29 @@
   const fail = (e) => { console.error(e); TI.ui && TI.ui.toast && TI.ui.toast('Could not save. Please try again.', { icon: 'error' }); };
   const nextOrder = (arr) => (arr.length ? Math.max(...arr.map((x) => x.order || 0)) + 1 : 0);
 
+  // "Last updated" per project: any edit inside a project stamps project.updatedAt
+  // (saved a moment later, so a burst of edits is one write).
+  const touchTimers = {};
+  function saveTouch(pid) { const q = state.projects.find((p) => p.id === pid); if (q) api.update('projects', pid, { updatedAt: q.updatedAt }).catch(fail); }
+  function touchProject(pid) {
+    const p = pid && state.projects.find((x) => x.id === pid); if (!p) return;
+    p.updatedAt = Date.now();
+    clearTimeout(touchTimers[pid]);
+    touchTimers[pid] = setTimeout(() => { delete touchTimers[pid]; saveTouch(pid); }, 2500);
+  }
+  window.addEventListener('beforeunload', () => { Object.keys(touchTimers).forEach((pid) => { clearTimeout(touchTimers[pid]); saveTouch(pid); }); });
+  const pidOf = (sid) => { const s = state.subjects.find((x) => x.id === sid); return s ? s.projectId : null; };
+  const touchSubject = (sid) => touchProject(pidOf(sid));
+  // Remove attachment records (and, best effort, their files on GitHub)
+  function dropAttachments(f) {
+    const gone = state.attachments.filter(f);
+    if (!gone.length) return 0;
+    state.attachments = state.attachments.filter((a) => !f(a));
+    api.remove('attachments', gone.map((a) => a.id)).catch(fail);
+    if (TI.github && TI.github.configured()) TI.github.removeMany(gone).catch((e) => console.warn('GitHub cleanup failed', e));
+    return gone.length;
+  }
+
   // ---------------- Selectors ----------------
   const sel = {
     activeProject() {
@@ -35,6 +58,11 @@
     node(id) { return state.nodes.find((n) => n.id === id) || null; },
     cards(sid) { return state.cards.filter((c) => c.subjectId === sid).sort((a, b) => a.due - b.due); },
     notes(sid) { return state.notes.filter((n) => !sid || n.subjectId === sid).sort((a, b) => (b.pinned - a.pinned) || b.updatedAt - a.updatedAt); },
+    // Notes attached to exactly this subject (nodeId null) or this node
+    notesOn(subjectId, nodeId = null) { return state.notes.filter((n) => n.subjectId === subjectId && (n.nodeId || null) === (nodeId || null)).sort((a, b) => (b.pinned - a.pinned) || b.updatedAt - a.updatedAt); },
+    attachment(id) { return state.attachments.find((a) => a.id === id) || null; },
+    // Files attached to exactly this subject (nodeId null) or this node
+    attachmentsOn(subjectId, nodeId = null, kind = null) { return state.attachments.filter((a) => a.subjectId === subjectId && (a.nodeId || null) === (nodeId || null) && (!kind || a.kind === kind)).sort((a, b) => a.createdAt - b.createdAt); },
     sessionsOn(day, pid) { return state.sessions.filter((s) => U.dayKey(s.start) === day && (!pid || s.projectId === pid)).sort((a, b) => a.start - b.start); },
     blocksOn(day) {
       const wd = U.parseDay(day).getDay();
@@ -66,7 +94,7 @@
     // Reload everything from the current backend (after connecting / disconnecting a Google Sheet)
     async reload() {
       const d = await api.loadAll();
-      ['projects', 'subjects', 'nodes', 'sessions', 'cards', 'reviews', 'notes', 'blocks'].forEach((c) => { state[c] = []; });
+      TI.ops.COLLECTIONS.forEach((c) => { state[c] = []; });
       Object.assign(state, d, { ready: true });
       if (TI.timer && TI.timer.state.subjectId && !sel.subject(TI.timer.state.subjectId)) TI.timer.reset();
       bump();
@@ -87,17 +115,20 @@
 
     // ---- Projects ----
     addProject({ name, category = 'custom', color = TI.config.palette[0], templateId = null }) {
-      const p = { id: U.uid('p_'), name: name.trim() || 'Untitled', category, color, templateId, order: nextOrder(state.projects), createdAt: Date.now(), archived: false };
+      const now = Date.now();
+      const p = { id: U.uid('p_'), name: name.trim() || 'Untitled', category, color, templateId, order: nextOrder(state.projects), createdAt: now, updatedAt: now, archived: false };
       state.projects.push(p); bump(); api.create('projects', p).catch(fail);
       return p;
     },
     updateProject(id, patch) {
       const p = sel.project(id); if (!p) return;
-      Object.assign(p, patch); bump(); api.update('projects', id, patch).catch(fail);
+      const full = { ...patch, updatedAt: Date.now() };
+      Object.assign(p, full); bump(); api.update('projects', id, full).catch(fail);
     },
     deleteProject(id) {
       const sids = new Set(state.subjects.filter((s) => s.projectId === id).map((s) => s.id));
       const drop = (coll, f) => { const ids = state[coll].filter(f).map((x) => x.id); state[coll] = state[coll].filter((x) => !f(x)); if (ids.length) api.remove(coll, ids).catch(fail); };
+      dropAttachments((a) => sids.has(a.subjectId));
       drop('nodes', (n) => sids.has(n.subjectId));
       drop('cards', (c) => sids.has(c.subjectId));
       drop('reviews', (r) => sids.has(r.subjectId));
@@ -126,20 +157,22 @@
     addSubject({ projectId, name, color }, force = false) {
       if (!force && !sel.canAddSubject(projectId)) return null;
       const s = { id: U.uid('s_'), projectId, name: name.trim() || 'Untitled subject', color: color || TI.config.palette[state.subjects.length % TI.config.palette.length], order: nextOrder(sel.subjects(projectId)), createdAt: Date.now() };
-      state.subjects.push(s); bump(); api.create('subjects', s).catch(fail);
+      state.subjects.push(s); touchProject(projectId); bump(); api.create('subjects', s).catch(fail);
       return s;
     },
-    updateSubject(id, patch) { const s = sel.subject(id); if (!s) return; Object.assign(s, patch); bump(); api.update('subjects', id, patch).catch(fail); },
+    updateSubject(id, patch) { const s = sel.subject(id); if (!s) return; Object.assign(s, patch); touchProject(s.projectId); bump(); api.update('subjects', id, patch).catch(fail); },
     moveSubject(id, dir) {
       const s = sel.subject(id); if (!s) return;
       const list = sel.subjects(s.projectId); const i = list.indexOf(s); const j = i + dir;
       if (j < 0 || j >= list.length) return;
       [list[i], list[j]] = [list[j], list[i]];
       list.forEach((x, k) => { x.order = k; });
-      bump(); api.updateMany('subjects', list.map((x) => ({ id: x.id, order: x.order }))).catch(fail);
+      touchProject(s.projectId); bump(); api.updateMany('subjects', list.map((x) => ({ id: x.id, order: x.order }))).catch(fail);
     },
     deleteSubject(id) {
+      touchSubject(id);
       const drop = (coll, f) => { const ids = state[coll].filter(f).map((x) => x.id); state[coll] = state[coll].filter((x) => !f(x)); if (ids.length) api.remove(coll, ids).catch(fail); };
+      dropAttachments((a) => a.subjectId === id);
       drop('nodes', (n) => n.subjectId === id);
       drop('cards', (c) => c.subjectId === id);
       drop('reviews', (r) => r.subjectId === id);
@@ -165,12 +198,13 @@
         });
       };
       add(items, parentId);
+      if (created.length) touchSubject(subjectId);
       bump();
       if (created.length) api.createMany('nodes', created).catch(fail);
       if (!silent && parentId) { state.ui.expandedNodes = { ...state.ui.expandedNodes, [parentId]: 1 }; saveUi(); }
       return created;
     },
-    updateNode(id, patch) { const n = sel.node(id); if (!n) return; Object.assign(n, patch); bump(); api.update('nodes', id, patch).catch(fail); },
+    updateNode(id, patch) { const n = sel.node(id); if (!n) return; Object.assign(n, patch); touchSubject(n.subjectId); bump(); api.update('nodes', id, patch).catch(fail); },
     toggleNode(id) {
       const n = sel.node(id); if (!n) return;
       const desc = TI.stats.descendants(state, id);
@@ -178,7 +212,7 @@
       const allDone = leaves.every((l) => l.done);
       const now = Date.now();
       const patches = leaves.map((l) => { l.done = !allDone; l.doneAt = allDone ? null : now; return { id: l.id, done: l.done, doneAt: l.doneAt }; });
-      bump(); api.updateMany('nodes', patches).catch(fail);
+      touchSubject(n.subjectId); bump(); api.updateMany('nodes', patches).catch(fail);
       return !allDone;
     },
     moveNode(id, dir) {
@@ -187,11 +221,13 @@
       if (j < 0 || j >= list.length) return;
       [list[i], list[j]] = [list[j], list[i]];
       list.forEach((x, k) => { x.order = k; });
-      bump(); api.updateMany('nodes', list.map((x) => ({ id: x.id, order: x.order }))).catch(fail);
+      touchSubject(n.subjectId); bump(); api.updateMany('nodes', list.map((x) => ({ id: x.id, order: x.order }))).catch(fail);
     },
     deleteNode(id) {
+      const node = sel.node(id); if (node) touchSubject(node.subjectId);
       const ids = [id, ...TI.stats.descendants(state, id).map((d) => d.id)];
       const set = new Set(ids);
+      dropAttachments((a) => set.has(a.nodeId));
       state.nodes = state.nodes.filter((n) => !set.has(n.id));
       state.sessions.forEach((s) => { if (set.has(s.nodeId)) s.nodeId = null; });
       state.notes.forEach((m) => { if (set.has(m.nodeId)) m.nodeId = null; });
@@ -202,21 +238,21 @@
     logSession({ subjectId, nodeId = null, start, duration, mode = 'pomodoro', manual = false }) {
       const subj = sel.subject(subjectId); if (!subj || duration < 1) return null;
       const s = { id: U.uid('t_'), projectId: subj.projectId, subjectId, nodeId, start, duration: Math.round(duration), mode, manual };
-      state.sessions.push(s); bump(); api.create('sessions', s).catch(fail);
+      state.sessions.push(s); touchProject(s.projectId); bump(); api.create('sessions', s).catch(fail);
       return s;
     },
-    updateSession(id, patch) { const s = state.sessions.find((x) => x.id === id); if (!s) return; Object.assign(s, patch); bump(); api.update('sessions', id, patch).catch(fail); },
-    deleteSession(id) { state.sessions = state.sessions.filter((s) => s.id !== id); bump(); api.remove('sessions', id).catch(fail); },
+    updateSession(id, patch) { const s = state.sessions.find((x) => x.id === id); if (!s) return; Object.assign(s, patch); touchProject(s.projectId); bump(); api.update('sessions', id, patch).catch(fail); },
+    deleteSession(id) { const s0 = state.sessions.find((x) => x.id === id); if (s0) touchProject(s0.projectId); state.sessions = state.sessions.filter((s) => s.id !== id); bump(); api.remove('sessions', id).catch(fail); },
 
     // ---- Flashcards ----
     addCards(subjectId, list) {
       const now = Date.now();
       const cards = list.map((c, i) => ({ id: U.uid('c_'), subjectId, front: c.front.trim(), back: c.back.trim(), createdAt: now + i, ...TI.srs.newCard() }));
-      state.cards.push(...cards); bump(); api.createMany('cards', cards).catch(fail);
+      state.cards.push(...cards); touchSubject(subjectId); bump(); api.createMany('cards', cards).catch(fail);
       return cards;
     },
-    updateCard(id, patch) { const c = state.cards.find((x) => x.id === id); if (!c) return; Object.assign(c, patch); bump(); api.update('cards', id, patch).catch(fail); },
-    deleteCard(id) { state.cards = state.cards.filter((c) => c.id !== id); bump(); api.remove('cards', id).catch(fail); },
+    updateCard(id, patch) { const c = state.cards.find((x) => x.id === id); if (!c) return; Object.assign(c, patch); touchSubject(c.subjectId); bump(); api.update('cards', id, patch).catch(fail); },
+    deleteCard(id) { const c0 = state.cards.find((x) => x.id === id); if (c0) touchSubject(c0.subjectId); state.cards = state.cards.filter((c) => c.id !== id); bump(); api.remove('cards', id).catch(fail); },
     resetCard(id) { actions.updateCard(id, TI.srs.newCard()); },
     reviewCard(id, grade) {
       const c = state.cards.find((x) => x.id === id); if (!c) return null;
@@ -224,6 +260,7 @@
       Object.assign(c, patch, { lastReviewed: Date.now() });
       const r = { id: U.uid('r_'), cardId: id, subjectId: c.subjectId, grade, at: Date.now() };
       state.reviews.push(r);
+      touchSubject(c.subjectId);
       bump();
       api.update('cards', id, { ...patch, lastReviewed: c.lastReviewed }).catch(fail);
       api.create('reviews', r).catch(fail);
@@ -234,29 +271,48 @@
     addNote({ subjectId, nodeId = null, title = '', body = '' }) {
       const now = Date.now();
       const n = { id: U.uid('m_'), subjectId, nodeId, title, body, pinned: false, createdAt: now, updatedAt: now };
-      state.notes.push(n); bump(); api.create('notes', n).catch(fail);
+      state.notes.push(n); touchSubject(subjectId); bump(); api.create('notes', n).catch(fail);
       return n;
     },
-    updateNote(id, patch) { const n = state.notes.find((x) => x.id === id); if (!n) return; Object.assign(n, patch, { updatedAt: Date.now() }); bump(); api.update('notes', id, { ...patch, updatedAt: n.updatedAt }).catch(fail); },
-    deleteNote(id) { state.notes = state.notes.filter((n) => n.id !== id); bump(); api.remove('notes', id).catch(fail); },
+    updateNote(id, patch) { const n = state.notes.find((x) => x.id === id); if (!n) return; Object.assign(n, patch, { updatedAt: Date.now() }); touchSubject(n.subjectId); bump(); api.update('notes', id, { ...patch, updatedAt: n.updatedAt }).catch(fail); },
+    deleteNote(id) { const m0 = state.notes.find((x) => x.id === id); if (m0) touchSubject(m0.subjectId); state.notes = state.notes.filter((n) => n.id !== id); bump(); api.remove('notes', id).catch(fail); },
 
     // ---- Schedule ----
     addBlock(b) {
       const blk = { id: U.uid('b_'), repeat: 'none', doneDates: [], skipDates: [], nodeId: null, title: '', createdAt: Date.now(), ...b };
-      state.blocks.push(blk); bump(); api.create('blocks', blk).catch(fail);
+      state.blocks.push(blk); touchSubject(blk.subjectId); bump(); api.create('blocks', blk).catch(fail);
       return blk;
     },
-    updateBlock(id, patch) { const b = state.blocks.find((x) => x.id === id); if (!b) return; Object.assign(b, patch); bump(); api.update('blocks', id, patch).catch(fail); },
+    updateBlock(id, patch) { const b = state.blocks.find((x) => x.id === id); if (!b) return; Object.assign(b, patch); touchSubject(b.subjectId); bump(); api.update('blocks', id, patch).catch(fail); },
     deleteBlock(id, onlyDay = null) {
       const b = state.blocks.find((x) => x.id === id); if (!b) return;
       if (onlyDay && b.repeat && b.repeat !== 'none') { actions.updateBlock(id, { skipDates: [...(b.skipDates || []), onlyDay] }); return; }
-      state.blocks = state.blocks.filter((x) => x.id !== id); bump(); api.remove('blocks', id).catch(fail);
+      touchSubject(b.subjectId); state.blocks = state.blocks.filter((x) => x.id !== id); bump(); api.remove('blocks', id).catch(fail);
     },
     toggleBlockDone(id, day) {
       const b = state.blocks.find((x) => x.id === id); if (!b) return;
       const set = new Set(b.doneDates || []);
       if (set.has(day)) set.delete(day); else set.add(day);
       actions.updateBlock(id, { doneDates: [...set] });
+    },
+
+    // ---- Attachments (PDF / audio files stored in your GitHub repo) ----
+    addAttachment(att) {
+      const now = Date.now();
+      const a = { id: U.uid('f_'), nodeId: null, createdAt: now, updatedAt: now, ...att };
+      state.attachments.push(a); touchSubject(a.subjectId); bump(); api.create('attachments', a).catch(fail);
+      return a;
+    },
+    updateAttachment(id, patch) {
+      const a = sel.attachment(id); if (!a) return;
+      const full = { ...patch, updatedAt: Date.now() };
+      Object.assign(a, full); touchSubject(a.subjectId); bump(); api.update('attachments', id, full).catch(fail);
+    },
+    // Removes the record only; the caller deletes the file on GitHub
+    deleteAttachment(id) {
+      const a = sel.attachment(id); if (!a) return;
+      touchSubject(a.subjectId);
+      state.attachments = state.attachments.filter((x) => x.id !== id); bump(); api.remove('attachments', id).catch(fail);
     },
 
     // ---- Account / data (mocked backend calls) ----

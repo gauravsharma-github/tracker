@@ -1,4 +1,5 @@
-// Home: active exam/project with date strip, completion, time spent and subject cards.
+// Project view: the active exam/project with date strip, completion, time spent and subject cards.
+// (The all-projects Dashboard is js/screens/overview.js.)
 (function (TI) {
   const U = TI.util;
   const { state, sel, actions } = TI.store;
@@ -15,7 +16,7 @@
       <div class="subject-head">
         ${TI.ui.ring(r, s.color, { size: desktop ? 68 : 64, stroke: 6 })}
         <div class="info" data-act="subject-expand" data-id="${s.id}">
-          <div class="name"><span data-act="nav" data-to="/subject/${s.id}" class="name-link">${U.esc(s.name)}</span></div>
+          <div class="name"><span data-act="nav" data-to="/subject/${s.id}" class="name-link ellipsis">${U.esc(s.name)}</span><span class="row-ics">${TI.attach.iconsHtml(s.id, null)}</span></div>
           <div class="time">${U.fmtDur(st.subjectTime(state, s.id), { noDays: true })}</div>
           <span class="more">${open ? 'Hide Details' : 'See Details'} ${U.icon(open ? 'expand_less' : 'expand_more')}</span>
           ${dueTopics || dueCards ? `<div class="subject-meta">${dueTopics ? `<span class="tag warn">${U.icon('event')}${U.plural(dueTopics, 'topic')} due</span>` : ''}${dueCards ? `<span class="tag">${U.icon('style')}${dueCards} cards due</span>` : ''}</div>` : ''}
@@ -79,9 +80,12 @@
   }
 
   const screen = {
-    title: 'Dashboard',
+    title: 'Project',
+    welcome,
     render(ctx) {
-      const p = sel.activeProject();
+      // #/project/<id> opens that project
+      if (ctx.params[0] && sel.project(ctx.params[0]) && state.settings.activeProjectId !== ctx.params[0]) setTimeout(() => actions.setActiveProject(ctx.params[0]), 0);
+      const p = (ctx.params[0] && sel.project(ctx.params[0])) || sel.activeProject();
       if (!p) return welcome();
       const st = TI.stats;
       const subjects = sel.subjects(p.id);
@@ -148,5 +152,5 @@
     },
   };
 
-  TI.screens.home = screen;
+  TI.screens.project = screen;
 })(window.TI);

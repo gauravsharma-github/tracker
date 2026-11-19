@@ -10,7 +10,7 @@
       ${n.pinned ? `<span class="note-pin">${U.icon('push_pin', 'fill xs')}</span>` : ''}
       ${n.title ? `<h3 class="${big ? 'big' : ''}">${U.esc(n.title)}</h3>` : ''}
       ${n.body ? `<div class="note-body">${U.nl2br(U.linkify(U.truncate(n.body, 600)))}</div>` : ''}
-      ${node ? `<div class="note-topic">${U.icon('subdirectory_arrow_right', 'xs')}${U.esc(node.title)}</div>` : ''}
+      <div class="note-topic">${U.icon(node ? 'subdirectory_arrow_right' : 'menu_book', 'xs')}<span>${U.esc([s ? s.name : '', ...(node ? TI.stats.pathOf(state, node.id).map((x) => x.title) : [])].filter(Boolean).join(' › '))}${node ? '' : ' · subject note'}</span></div>
       <div class="note-date">${U.fmtDate(n.updatedAt, { year: true })}</div>
     </article>`;
   }
@@ -18,11 +18,20 @@
   function edit(id, preset = {}) {
     const existing = id ? state.notes.find((n) => n.id === id) : null;
     const p = sel.activeProject();
-    const subjects = existing ? sel.subjects(sel.subject(existing.subjectId).projectId) : p ? sel.subjects(p.id) : [];
+    const anchorSubject = existing ? sel.subject(existing.subjectId) : preset.subjectId ? sel.subject(preset.subjectId) : null;
+    const subjects = anchorSubject ? sel.subjects(anchorSubject.projectId) : p ? sel.subjects(p.id) : [];
     if (!subjects.length) return TI.ui.toast('Add a subject first', { icon: 'info' });
     let sid = existing ? existing.subjectId : preset.subjectId || subjects[0].id;
     let pinned = existing ? existing.pinned : false;
-    const topicOptions = (subjectId, cur) => ['<option value="">No topic</option>', ...TI.stats.leaves(state, subjectId).map((l) => `<option value="${l.node.id}" ${l.node.id === cur ? 'selected' : ''}>${U.esc([...l.path, l.node.title].join(' › '))}</option>`)].join('');
+    // Every level of the syllabus (units, chapters, topics), indented
+    const topicOptions = (subjectId, cur) => {
+      const rows = ['<option value="">Whole subject (subject note)</option>'];
+      const walk = (pid, depth) => TI.stats.children(state, subjectId, pid).forEach((n) => {
+        rows.push(`<option value="${n.id}" ${n.id === cur ? 'selected' : ''}>${'\u00a0\u00a0\u00a0'.repeat(depth)}${depth ? '› ' : ''}${U.esc(n.title)}</option>`);
+        walk(n.id, depth + 1);
+      });
+      walk(null, 0); return rows.join('');
+    };
     const nodeId = existing ? existing.nodeId : preset.nodeId || null;
     TI.ui.openSheet({
       title: existing ? 'Edit note' : 'New note', size: 'lg',
@@ -63,6 +72,16 @@
       const q = (state.ui.notesQuery || '').toLowerCase();
       let list = state.notes.filter((n) => subjects.some((s) => s.id === n.subjectId));
       if (filter !== 'all') list = list.filter((n) => n.subjectId === filter);
+      // Topic filter (from a topic's note icon, or the Topic menu): node id, 'general' or ''
+      const topic = filter !== 'all' ? (ctx.query.node || '') : '';
+      if (topic === 'general') list = list.filter((n) => !n.nodeId);
+      else if (topic) list = list.filter((n) => n.nodeId === topic);
+      let topicSelect = '';
+      if (filter !== 'all') {
+        const counts = new Map(); state.notes.filter((n) => n.subjectId === filter).forEach((n) => counts.set(n.nodeId || 'general', (counts.get(n.nodeId || 'general') || 0) + 1));
+        const opts = [...counts.entries()].filter(([k]) => k !== 'general' && sel.node(k)).map(([k, c]) => ({ k, c, label: TI.stats.pathOf(state, k).map((x) => x.title).join(' › ') })).sort((a, b) => a.label.localeCompare(b.label));
+        topicSelect = `<select class="select notes-topic" data-change="notes-topic" aria-label="Topic"><option value="">All topics</option>${counts.get('general') ? `<option value="general" ${topic === 'general' ? 'selected' : ''}>Subject notes (${counts.get('general')})</option>` : ''}${opts.map((o) => `<option value="${o.k}" ${topic === o.k ? 'selected' : ''}>${U.esc(o.label)} (${o.c})</option>`).join('')}${topic && topic !== 'general' && !counts.has(topic) && sel.node(topic) ? `<option value="${topic}" selected>${U.esc(sel.node(topic).title)} (0)</option>` : ''}</select>`;
+      }
       if (q) list = list.filter((n) => (n.title + ' ' + n.body).toLowerCase().includes(q));
       list.sort((a, b) => (b.pinned - a.pinned) || b.updatedAt - a.updatedAt);
       const head = one
@@ -71,14 +90,21 @@
       return `${head}
         <div class="notes-tools">
           <div class="input-icon grow">${U.icon('search')}<input class="input" placeholder="Search notes" value="${U.esc(state.ui.notesQuery || '')}" data-input="notes-search" /></div>
+          ${topicSelect}
           ${one ? '' : `<div class="chips">${[{ id: 'all', name: 'All', color: 'var(--primary)' }, ...subjects].map((s) => `<button class="chip ${filter === s.id ? 'on' : ''}" style="--c:${s.color}" data-act="notes-filter" data-id="${s.id}">${s.id !== 'all' ? '<span class="dot"></span>' : ''}${U.esc(s.name)}</button>`).join('')}</div>`}
         </div>
         ${list.length ? `<div class="masonry">${list.map(noteCard).join('')}</div>` : TI.ui.empty('sticky_note_2', q ? 'No matching notes' : 'No notes yet', q ? 'Try a different search.' : 'Keep formulas, mnemonics, doubts and links next to your syllabus.', q ? '' : `<button class="btn primary" data-act="note-new" data-subject="${one ? one.id : ''}">${U.icon('add')}New note</button>`)}
-        <button class="fab" data-act="note-new" data-subject="${one ? one.id : filter !== 'all' ? filter : ''}">${U.icon('add')}New note</button>`;
+        <button class="fab" data-act="note-new" data-subject="${one ? one.id : filter !== 'all' ? filter : ''}" data-node="${topic && topic !== 'general' ? topic : ''}">${U.icon('add')}New note</button>`;
     },
     actions: {
-      'notes-filter': (el) => actions.setUi({ notesFilter: el.dataset.id }),
-      'note-new': (el) => edit(null, { subjectId: el.dataset.subject || undefined }),
+      'notes-filter': (el) => { actions.setUi({ notesFilter: el.dataset.id }); if (TI.router.current.query.node) TI.router.go('/notes', { replace: true }); },
+      'note-new': (el) => edit(null, { subjectId: el.dataset.subject || undefined, nodeId: el.dataset.node || null }),
+    },
+    changes: {
+      'notes-topic': (el) => {
+        const r = TI.router.current; const sid = r.params[0] || state.ui.notesFilter;
+        TI.router.go(`/notes${r.params[0] ? '/' + sid : ''}${el.value ? `?node=${el.value}` : ''}`, { replace: true });
+      },
     },
     inputs: { 'notes-search': (el) => actions.setUi({ notesQuery: el.value }) },
     edit,

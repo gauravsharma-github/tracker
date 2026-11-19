@@ -18,11 +18,11 @@
  * "@OnlyCurrentDoc" limits the script to this one spreadsheet.
  */
 
-var BACKEND_VERSION = 1;
+var BACKEND_VERSION = 2;
 
 // Column types: s = text, n = number, t = timestamp (ms), b = true/false, j = JSON text
 var SCHEMA = {
-  projects: [['id', 's'], ['name', 's'], ['category', 's'], ['color', 's'], ['templateId', 's'], ['order', 'n'], ['archived', 'b'], ['createdAt', 't']],
+  projects: [['id', 's'], ['name', 's'], ['category', 's'], ['color', 's'], ['templateId', 's'], ['order', 'n'], ['archived', 'b'], ['createdAt', 't'], ['updatedAt', 't']],
   subjects: [['id', 's'], ['projectId', 's'], ['name', 's'], ['color', 's'], ['order', 'n'], ['createdAt', 't']],
   nodes: [['id', 's'], ['subjectId', 's'], ['parentId', 's'], ['title', 's'], ['done', 'b'], ['doneAt', 't'], ['due', 's'], ['order', 'n'], ['createdAt', 't']],
   sessions: [['id', 's'], ['projectId', 's'], ['subjectId', 's'], ['nodeId', 's'], ['start', 't'], ['duration', 'n'], ['mode', 's'], ['manual', 'b']],
@@ -30,6 +30,8 @@ var SCHEMA = {
   reviews: [['id', 's'], ['cardId', 's'], ['subjectId', 's'], ['grade', 's'], ['at', 't']],
   notes: [['id', 's'], ['subjectId', 's'], ['nodeId', 's'], ['title', 's'], ['body', 's'], ['pinned', 'b'], ['createdAt', 't'], ['updatedAt', 't']],
   blocks: [['id', 's'], ['date', 's'], ['start', 's'], ['end', 's'], ['subjectId', 's'], ['nodeId', 's'], ['title', 's'], ['repeat', 's'], ['until', 's'], ['doneDates', 'j'], ['skipDates', 'j'], ['createdAt', 't']],
+  // v2: PDF / audio files kept in your GitHub repo (this tab only stores where they are)
+  attachments: [['id', 's'], ['projectId', 's'], ['subjectId', 's'], ['nodeId', 's'], ['kind', 's'], ['name', 's'], ['path', 's'], ['repo', 's'], ['branch', 's'], ['sha', 's'], ['size', 'n'], ['mime', 's'], ['duration', 'n'], ['createdAt', 't'], ['updatedAt', 't']],
 };
 var SETTINGS_TAB = 'settings';
 var NULLABLE = { parentId: 1, nodeId: 1, templateId: 1, due: 1, until: 1 };
@@ -55,7 +57,7 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     switch (req.op) {
       case 'ping': return out_({ ok: true, app: 'TrackIt', version: BACKEND_VERSION, counts: counts_(ss), sheetUrl: ss.getUrl(), sheetName: ss.getName() });
-      case 'bootstrap': return out_({ ok: true, data: readAll_(ss), sheetUrl: ss.getUrl(), serverTime: Date.now() });
+      case 'bootstrap': return out_({ ok: true, version: BACKEND_VERSION, data: readAll_(ss), sheetUrl: ss.getUrl(), serverTime: Date.now() });
       case 'apply': applyOps_(ss, req.ops || []); return out_({ ok: true, applied: (req.ops || []).length, serverTime: Date.now() });
       case 'replaceAll': replaceAll_(ss, req.data || {}); return out_({ ok: true, counts: counts_(ss) });
       default: return out_({ ok: false, error: 'Unknown operation: ' + req.op });
@@ -126,7 +128,18 @@ function newToken_() { return (Utilities.getUuid() + Utilities.getUuid()).replac
 
 // ---------------------------------------------------------------- Tables
 
-function colsOf_(name) { return SCHEMA[name].concat([['extra', 'j']]); }
+function colsOf_(name) { return (SCHEMA[name] || [['id', 's']]).concat([['extra', 'j']]); }
+
+// Collections added by newer app versions get a simple tab (id + extra JSON) automatically,
+// so an older script never blocks syncing. Their names are remembered in Script Properties.
+function isCollName_(name) { return SCHEMA[name] || /^[a-z][A-Za-z0-9]{1,30}$/.test(String(name || '')); }
+function extraColls_() { var v = PropertiesService.getScriptProperties().getProperty('EXTRA_COLLS'); return v ? v.split(',').filter(String) : []; }
+function rememberColl_(name) {
+  if (SCHEMA[name] || name === SETTINGS_TAB) return;
+  var list = extraColls_(); if (list.indexOf(name) >= 0) return;
+  list.push(name); PropertiesService.getScriptProperties().setProperty('EXTRA_COLLS', list.join(','));
+}
+function allColls_() { return Object.keys(SCHEMA).concat(extraColls_().filter(function (n) { return !SCHEMA[n]; })); }
 
 // Opens (or creates) a tab and makes sure every schema column has a header.
 // Columns are located by header name, so you may reorder them or add your own columns.
@@ -252,7 +265,8 @@ function applyOps_(ss, ops) {
   var cache = {}; var settingsPatch = null;
   ops.forEach(function (op) {
     if (op.op === 'settings') { settingsPatch = Object.assign(settingsPatch || {}, op.patch || {}); return; }
-    if (!SCHEMA[op.coll]) throw new Error('Unknown collection: ' + op.coll);
+    if (!isCollName_(op.coll) || op.coll === SETTINGS_TAB) throw new Error('Unknown collection: ' + op.coll);
+    rememberColl_(op.coll);
     var c = cache[op.coll] || (cache[op.coll] = load_(ss, op.coll));
     switch (op.op) {
       case 'create': upsert_(c, op.item); break;
@@ -292,19 +306,20 @@ function remove_(c, ids) {
 
 function readAll_(ss) {
   var data = {};
-  Object.keys(SCHEMA).forEach(function (name) { data[name] = readColl_(ss, name); });
+  allColls_().forEach(function (name) { data[name] = readColl_(ss, name); });
   data.settings = readSettings_(ss);
   return data;
 }
 
 function counts_(ss) {
   var out = {};
-  Object.keys(SCHEMA).forEach(function (name) { out[name] = load_(ss, name).rows.length; });
+  allColls_().forEach(function (name) { out[name] = load_(ss, name).rows.length; });
   return out;
 }
 
 function replaceAll_(ss, data) {
-  Object.keys(SCHEMA).forEach(function (name) {
+  Object.keys(data).forEach(function (k) { if (k !== 'settings' && Array.isArray(data[k]) && isCollName_(k)) rememberColl_(k); });
+  allColls_().forEach(function (name) {
     var c = load_(ss, name);
     var items = Array.isArray(data[name]) ? data[name] : [];
     var keepRaw = {}; c.rows.forEach(function (r) { keepRaw[r.o.id] = r.raw; });

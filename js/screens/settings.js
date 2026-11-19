@@ -64,8 +64,37 @@
       <div class="set-row">${U.icon('link')}<div class="txt"><div class="sub ellipsis" title="${U.esc(c.url || '')}">${U.esc(c.url || '')}</div></div><button class="btn sm ghost" data-act="sheet-disconnect">Disconnect</button></div>`;
   }
 
+  // ?focus=github scrolls to the attachments section once per navigation
+  let focused = false;
+  TI.router.onChange(() => { focused = false; });
+
+  function githubRows() {
+    const GH = TI.github; const A = TI.attach;
+    const files = state.attachments; const total = files.reduce((n, a) => n + (a.size || 0), 0);
+    const pdfs = files.filter((a) => a.kind === 'pdf').length; const audio = files.length - pdfs;
+    const oldScript = TI.api.mode() === 'sheets' && TI.api.backendVersion() < 2
+      ? `<div class="set-row">${U.icon('warning')}<div class="txt"><div class="ttl">Update your sheet script</div><div class="sub">Attachments need backend/Code.gs version 2 – see backend/SETUP.md › Updating.</div></div></div>` : '';
+    if (!GH.configured()) {
+      return `<div class="set-row">${U.icon('attach_file')}<div class="txt"><div class="ttl">PDF notes &amp; audio</div><div class="sub">Attach PDFs (up to 25 MB) and recordings (up to about 1 hour) to any subject, unit or topic. Files are kept in your own private GitHub repository – free, nothing to pay.</div></div><button class="btn sm primary" data-act="gh-setup">Set up</button></div>
+        ${files.length ? `<div class="set-row">${U.icon('info')}<div class="txt"><div class="sub">${U.plural(files.length, 'file')} attached. Connect the same repository on this device to open them${TI.api.mode() === 'sheets' ? ' (or paste a connection code from a device where it is set up)' : ''}.</div></div></div>` : ''}${oldScript}`;
+    }
+    const c = GH.cfg(); const pct = Math.min(100, (total / GH.LIMITS.repoSoft) * 100);
+    return `<div class="set-row">${U.icon('lock', 'fill')}<div class="txt"><div class="ttl">${U.esc(c.owner)}/${U.esc(c.repo)} <span class="chip-mini">Private</span></div><div class="sub">${files.length ? `${U.plural(pdfs, 'PDF')} · ${U.plural(audio, 'recording')} · ${A.fmtSize(total)}` : 'No files yet'} · branch ${U.esc(c.branch || 'main')}</div>
+        ${files.length ? `<div class="meter" title="${A.fmtSize(total)} of about 1 GB (GitHub's recommended repository size)"><i style="width:${Math.max(pct, 1)}%" class="${pct > 80 ? 'hot' : ''}"></i></div><div class="sub">${pct < 0.1 ? 'Under 0.1' : pct.toFixed(pct < 10 ? 1 : 0)}% of the ~1 GB GitHub recommends per repo${pct > 80 ? ' – start a second repo soon' : ''}</div>` : ''}</div></div>
+      <div class="set-row click" data-act="gh-open">${U.icon('open_in_new')}<div class="txt"><div class="ttl">Open the repository</div><div class="sub">Browse or download your files on GitHub</div></div></div>
+      <div class="set-row click" data-act="gh-setup">${U.icon('key')}<div class="txt"><div class="ttl">Change token or repository</div><div class="sub">Tokens expire – if uploads say the token was rejected, paste a new one here</div></div></div>
+      <div class="set-row">${U.icon('info')}<div class="txt"><div class="sub">The token is stored only in this browser${TI.api.mode() === 'sheets' ? ' and in connection codes you copy' : ''}.</div></div><button class="btn sm ghost" data-act="gh-disconnect">Disconnect</button></div>${oldScript}`;
+  }
+
   const screen = {
     title: 'Settings',
+    mount(root, ctx) {
+      if (ctx.query.focus === 'github' && !focused) {
+        focused = true;
+        const el = root.querySelector('#set-gh');
+        if (el) { setTimeout(() => { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); }, 60); }
+      }
+    },
     render(ctx) {
       const st = state.settings; const acc = state.account; const pro = sel.isPro(); const sheets = TI.api.mode() === 'sheets';
       const notif = 'Notification' in window ? Notification.permission : 'unsupported';
@@ -78,6 +107,8 @@
             </div>`}
             <div class="set-group-title">Sync &amp; backup</div>
             <div class="set-group">${sheetsRows()}</div>
+            <div class="set-group-title">Attachments (GitHub)</div>
+            <div class="set-group" id="set-gh">${githubRows()}</div>
             <div class="set-group-title">Appearance</div>
             <div class="set-group">
               <div class="set-row">${U.icon('contrast')}<div class="txt"><div class="ttl">Theme</div></div>${TI.ui.seg([{ id: 'dark', label: 'Dark' }, { id: 'light', label: 'Light' }, { id: 'system', label: 'System' }], st.theme, 'set-theme', 'alt')}</div>
@@ -143,6 +174,9 @@
       'sheet-open': () => { const c = TI.api.connection(); if (c && c.sheetUrl) window.open(c.sheetUrl, '_blank', 'noopener'); },
       'sheet-code': () => TI.sync.copyCode(),
       'sheet-disconnect': () => TI.sync.disconnect(),
+      'gh-setup': () => TI.attach.setupGithub(),
+      'gh-disconnect': () => TI.attach.disconnectGithub(),
+      'gh-open': () => { const c = TI.github.cfg(); if (c) window.open(`https://github.com/${c.owner}/${c.repo}`, '_blank', 'noopener'); },
       backup: async () => { busy = 'backup'; TI.store.bump(); await actions.backupNow(); busy = ''; TI.store.bump(); TI.ui.toast('Backed up', { icon: 'cloud_done' }); },
       export: () => actions.exportBackup(),
       import: async () => {

@@ -4,7 +4,8 @@
   const { state, sel } = TI.store;
 
   const NAV = [
-    { to: '/', name: 'home', icon: 'space_dashboard', label: 'Dashboard' },
+    { to: '/', name: 'home', icon: 'grid_view', label: 'Dashboard' },
+    { to: '/project', name: 'project', icon: 'space_dashboard', label: 'Project view' },
     { to: '/focus', name: 'focus', icon: 'timer', label: 'Focus timer' },
     { to: '/schedule', name: 'schedule', icon: 'calendar_month', label: 'Schedule' },
     { to: '/cards', name: 'cards', icon: 'style', label: 'Flashcards' },
@@ -58,7 +59,8 @@
     const t = TI.timer;
     const due = (() => { const p = sel.activeProject(); return p ? U.sum(sel.subjects(p.id), (s) => TI.stats.dueCards(state, s.id).length) : 0; })();
     const tab = (to, name, icon, label, extra = '') => `<button class="${route.name === name ? 'on' : ''}" data-act="nav" data-to="${to}">${U.icon(icon)}<span>${label}</span>${extra}</button>`;
-    return `${tab('/', 'home', 'home', 'Home')}${tab('/schedule', 'schedule', 'calendar_month', 'Schedule')}
+    const homeOn = route.name === 'home' || route.name === 'project';
+    return `${tab('/', homeOn ? route.name : 'home', 'home', 'Home')}${tab('/schedule', 'schedule', 'calendar_month', 'Schedule')}
       <button class="tab-timer ${t.state.status === 'running' ? 'running' : ''} ${route.name === 'focus' ? 'on' : ''}" data-act="nav" data-to="/focus"><span class="bubble">${U.icon(t.state.status === 'running' ? 'graphic_eq' : 'timer', 'fill')}</span><span>Timer</span></button>
       ${tab('/cards', 'cards', 'style', 'Cards', due ? `<span class="badge hot tab-badge">${due}</span>` : '')}${tab('/insights', 'insights', 'insights', 'Insights')}`;
   }

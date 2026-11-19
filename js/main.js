@@ -12,10 +12,12 @@
   const screenFor = (r) => TI.screens[r.name] || TI.screens.home;
   const ctx = () => { const r = TI.router.current; return { route: r, params: r.params, query: r.query, desktop: TI.layout.isDesktop(), wide: TI.layout.isWide() }; };
 
-  function render() {
+  function render(force = false) {
     queued = false;
     if (!state.ready) return;
     const c = ctx(); const scr = screenFor(c.route);
+    // Screens marked static (the PDF/audio viewer) keep their DOM while data changes in the background
+    if (!force && scr.static && current === scr && c.route.path + '?' + JSON.stringify(c.query) === lastKey) return;
     const ae = document.activeElement; let focusKey = null; let s0 = 0; let s1 = 0;
     if (ae && ae.dataset && ae.dataset.input && $view.contains(ae)) { focusKey = ae.dataset.input; s0 = ae.selectionStart; s1 = ae.selectionEnd; }
     const routeKey = c.route.path + '?' + JSON.stringify(c.query);
@@ -40,7 +42,7 @@
     if (routeKey !== lastKey) { if (lastKey.split('?')[0] !== routeKey.split('?')[0]) window.scrollTo(0, 0); lastKey = routeKey; }
     TI.timerCard.tick();
   }
-  const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(render); } };
+  const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(() => render(false)); } };
 
   // ---------------- Global actions ----------------
   function subjectMenu(el, id) {
@@ -51,6 +53,9 @@
       { icon: 'edit', label: 'Edit name & colour', onClick: () => TI.forms.subjectForm(s) },
       { icon: 'playlist_add', label: 'Add units / topics', onClick: () => TI.forms.topicForm(s.id, null) },
       { icon: 'more_time', label: 'Log time manually', onClick: () => TI.forms.logTimeForm({ subjectId: s.id }) },
+      { icon: 'attach_file', label: 'Attach PDF / audio to subject', onClick: () => TI.attach.pick(s.id, null) },
+      ...(TI.attach.countOn(s.id, null) ? [{ icon: 'folder_open', label: `Subject attachments (${TI.attach.countOn(s.id, null)})`, onClick: () => TI.attach.manage(s.id, null) }] : []),
+      { icon: 'sticky_note_2', label: 'Add subject note', onClick: () => TI.screens.notes.edit(null, { subjectId: s.id, nodeId: null }) },
       { icon: 'event', label: 'Plan a study block', onClick: () => TI.screens.schedule.blockForm(null, { subjectId: s.id }) },
       { icon: 'style', label: 'Flashcards', onClick: () => go('/cards/' + s.id) },
       { icon: 'sticky_note_2', label: 'Notes', onClick: () => go('/notes/' + s.id) },
@@ -60,9 +65,10 @@
       { icon: 'arrow_downward', label: 'Move down', onClick: () => actions.moveSubject(s.id, 1) },
       { sep: true },
       { icon: 'delete', label: 'Delete subject', danger: true, onClick: async () => {
-        if (!(await TI.ui.confirmDialog(`Delete ${s.name}?`, 'Its topics, study sessions, flashcards and notes will be deleted. This cannot be undone.'))) return;
+        const files = state.attachments.filter((a) => a.subjectId === s.id).length;
+        if (!(await TI.ui.confirmDialog(`Delete ${s.name}?`, `Its topics, study sessions, flashcards and notes${files ? ` and ${U.plural(files, 'attached file')} (also deleted from GitHub)` : ''} will be deleted. This cannot be undone.`))) return;
         if (TI.timer.state.subjectId === s.id) TI.timer.reset();
-        actions.deleteSubject(s.id); if (onPage) go('/');
+        actions.deleteSubject(s.id); if (onPage) go('/project');
       } },
     ]);
   }
@@ -86,7 +92,7 @@
 
   const globalActions = {
     nav: (el) => go(el.dataset.to),
-    back: () => TI.router.back('/'),
+    back: (el) => TI.router.back((el && el.dataset.fallback) || (['subject', 'notes', 'study', 'flashcards'].includes(TI.router.current.name) ? '/project' : '/')),
     'project-menu': (el) => TI.forms.projectMenu(el),
     'new-project': () => TI.forms.projectForm(),
     'new-subject': () => TI.forms.subjectForm(),
@@ -116,7 +122,7 @@
   };
 
   function findHandler(act) {
-    return (current && current.actions && current.actions[act]) || TI.tree.handlers[act] || (TI.screens.cards.actions[act]) || globalActions[act];
+    return (current && current.actions && current.actions[act]) || TI.tree.handlers[act] || TI.attach.handlers[act] || (TI.screens.cards.actions[act]) || globalActions[act];
   }
 
   $app.addEventListener('click', (e) => {
@@ -180,7 +186,7 @@
     TI.timer.onChange(schedule);
     TI.timer.onTick(TI.timerCard.tick);
     TI.layout.onChange(schedule);
-    TI.router.onChange(() => { TI.ui.closeMenu(); TI.ui.closeAll(); render(); });
+    TI.router.onChange(() => { TI.ui.closeMenu(); TI.ui.closeAll(); render(true); });
     render();
     setTimeout(() => TI.reminders.check(), 1500);
   }

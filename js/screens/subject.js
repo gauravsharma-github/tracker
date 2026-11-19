@@ -31,7 +31,7 @@
       return `<div class="subject-page" style="--c:${s.color}">
         <div class="topbar">
           <button class="icon-btn" data-act="back" aria-label="Back">${U.icon('arrow_back')}</button>
-          <div class="grow" style="min-width:0"><h1 class="title-tint ellipsis">${U.esc(s.name)}</h1>${p ? `<div class="tiny faint desktop-only">${U.esc(p.name)}</div>` : ''}</div>
+          <div class="grow" style="min-width:0"><div class="row" style="gap:6px;min-width:0"><h1 class="title-tint ellipsis">${U.esc(s.name)}</h1><span class="row-ics lg">${TI.attach.iconsHtml(s.id, null)}</span></div>${p ? `<div class="tiny faint desktop-only">${U.esc(p.name)}</div>` : ''}</div>
           <div class="actions">
             <button class="icon-btn" data-act="nav" data-to="/share?subject=${s.id}" title="Share progress" aria-label="Share progress">${U.icon('share')}</button>
             <button class="icon-btn" data-act="subject-menu" data-id="${s.id}" aria-label="More">${U.icon('more_vert')}</button>

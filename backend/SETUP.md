@@ -47,11 +47,33 @@ You need: a Google account, and TrackIt open in a browser (your GitHub Pages URL
 2. On the phone or other browser: open TrackIt › **Settings › Connect › I have a connection code**, paste it, **Check connection** → **Use the data in my sheet** → **Connect**.
 3. On Android Chrome you can then use **⋮ › Add to Home screen** to open TrackIt like an app.
 
-Treat the connection code like a password.
+Treat the connection code like a password. If you set up attachments (below) on the first device, the code also carries those GitHub settings, so the phone can open your PDFs and recordings right away.
+
+## 6. Attachments: PDFs and audio in a private GitHub repo (optional)
+
+The sheet stores the file details (name, path, size); the files themselves go into a GitHub repository you own. Private repositories are free.
+
+1. On GitHub: **+ › New repository**, name it e.g. `trackit-files`, choose **Private**, tick **Add a README file**, **Create repository**.
+2. Make a token: your photo › **Settings › Developer settings › Personal access tokens › Fine-grained tokens › Generate new token**.
+   - **Token name:** TrackIt files · **Expiration:** your choice
+   - **Repository access:** *Only select repositories* → `trackit-files`
+   - **Permissions › Repository permissions › Contents:** *Read and write*
+   - **Generate token** and copy it (it starts with `github_pat_`; GitHub shows it only once).
+3. In TrackIt: **Settings › Attachments (GitHub) › Set up** → your GitHub username, `trackit-files` (or the repo URL), the token → **Check repository** → **Save**.
+4. Copy a fresh connection code (**Settings › Connect another device**) for your other devices, or repeat step 3 on them.
+
+When the token expires, uploads and downloads say *GitHub rejected the token*: generate a new one the same way and paste it under **Settings › Attachments › Change token or repository** on each device (or send a new connection code).
 
 ## Updating the script later
 
 Edit `Code.gs`, save, then **Deploy › Manage deployments → ✏️ (edit) → Version: New version → Deploy**. Editing the existing deployment keeps the same `/exec` URL, so your devices stay connected. (A brand-new deployment would give a new URL.)
+
+**Updating from version 1 to version 2** (adds the `attachments` tab and the projects' `updatedAt` column used by the Dashboard's "last updated" order):
+
+1. In the sheet: **Extensions › Apps Script**, select all the code in `Code.gs` and replace it with the new `backend/Code.gs`. **Save**.
+2. Choose the **setup** function and **Run** it once. It adds the new tab and column and keeps your data and secret key.
+3. **Deploy › Manage deployments → ✏️ → Version: New version → Deploy**.
+4. In TrackIt: **Settings › Sync now** on each device. Until then TrackIt keeps working, but attaching files asks you to update first.
 
 ## Looking at your data
 
@@ -72,6 +94,10 @@ Times are stored as milliseconds since 1970 (UTC). `=EPOCHTODATE(E2, 2)` turns o
 | *The sheet is not set up yet* | Run `setup` once in the Apps Script editor. |
 | *The sheet is busy* | Two devices synced at the same moment; it retries automatically. |
 | Sidebar says "N waiting" | Changes are safe in the browser and will sync when the script is reachable. Use **Settings › Sync now** to retry. |
+| *Update your Google Sheet script* (when attaching) | Follow **Updating from version 1 to version 2** above. |
+| *GitHub rejected the token* | The token is wrong or expired. Make a new one (step 6) and paste it in **Settings › Attachments**. |
+| *Repository not found* | Check the username and repository name, and that the token was given access to that repository. |
+| *The token is not allowed to do this* | Edit the token on GitHub: **Contents › Read and write** for that repository. |
 
 ## Security and limits
 
@@ -79,6 +105,7 @@ Times are stored as milliseconds since 1970 (UTC). `=EPOCHTODATE(E2, 2)` turns o
 - To lock out every device (for example after losing a phone): **TrackIt › Create a new secret key**, then reconnect your own devices.
 - Apps Script's free quotas are far above one person's use. TrackIt sends changes in batches, usually one small request per few seconds of activity.
 - Two devices editing the very same item offline: the last change synced wins.
+- Attachments: GitHub takes files up to 100 MB through its API (TrackIt allows PDFs up to 25 MB and audio up to 95 MB) and recommends keeping a repository under about 1 GB. The GitHub token lives only in your browsers and connection codes, never in the sheet.
 
 ## Try it without Google (optional, for development)
 

@@ -150,3 +150,10 @@
   .sidebar { width: 280px; }
   .main { margin-left: 280px; }
 }
+
+/* Dashboard (all projects) on laptops */
+@media (min-width: 1024px) {
+  .ov-kpis { grid-template-columns: repeat(5, 1fr); }
+  .pj-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+  .row-ic { opacity: .9; }
+}

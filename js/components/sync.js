@@ -56,7 +56,7 @@
       const c = tested.counts || {}; const has = (c.projects || 0) > 0;
       if (!choice) choice = has ? 'remote' : 'empty';
       const opt = (id, title, sub, danger) => `<label class="cx-opt ${choice === id ? 'on' : ''} ${danger ? 'danger' : ''}"><input type="radio" name="cx-choice" value="${id}" ${choice === id ? 'checked' : ''} /><span><b>${title}</b><span>${sub}</span></span></label>`;
-      return `<div class="cx-ok">${U.icon('check_circle', 'fill')}<div><b>Found “${U.esc(tested.sheetName || 'your sheet')}”</b><div class="small muted">${has ? `${U.plural(c.projects, 'project')}, ${U.plural(c.sessions || 0, 'session')}, ${U.plural(c.cards || 0, 'card')}` : 'The sheet is empty'}</div></div></div>
+      return `<div class="cx-ok">${U.icon('check_circle', 'fill')}<div><b>Found “${U.esc(tested.sheetName || 'your sheet')}”</b>${creds && creds.gh ? `<div class="small muted">Also sets up attachments from ${U.esc(creds.gh.owner)}/${U.esc(creds.gh.repo)}</div>` : ''}<div class="small muted">${has ? `${U.plural(c.projects, 'project')}, ${U.plural(c.sessions || 0, 'session')}, ${U.plural(c.cards || 0, 'card')}` : 'The sheet is empty'}</div></div></div>
         <div class="cx-opts">${has
           ? opt('remote', 'Use the data in my sheet', 'Recommended. What is in this browser now is replaced by the sheet.') + opt('upload', 'Replace the sheet with this browser’s data', `Overwrites the sheet with ${U.plural(localCounts.projects, 'project')} from this browser.`, true)
           : opt('empty', 'Start fresh', 'Begin with an empty TrackIt. Good if this browser only has the demo data.') + opt('upload', 'Upload this browser’s data', `Copies ${U.plural(localCounts.projects, 'project')} and ${U.plural(localCounts.sessions, 'session')} into the sheet.`)}</div>`;
@@ -95,6 +95,7 @@
             setBusy(true, choice === 'upload' ? 'Uploading…' : 'Connecting…');
             try {
               await api().connect({ url: creds.url, token: creds.token, initial: choice });
+              if (creds.gh && TI.github) TI.github.save(creds.gh);
               await TI.store.actions.reload();
               a.close(); TI.router.go('/settings', { replace: true });
               TI.ui.toast('Connected – your data now lives in your Google Sheet', { icon: 'cloud_done', duration: 4500 });

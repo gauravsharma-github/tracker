@@ -233,7 +233,7 @@
     const r = U.rng(20241207);
     const pick = (arr) => arr[Math.floor(r() * arr.length)];
     const now = Date.now();
-    const db = { projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], settings: defaultSettings(), account: { signedIn: false, name: '', email: '', pro: false, plan: null, lastBackup: null } };
+    const db = { projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [], settings: defaultSettings(), account: { signedIn: false, name: '', email: '', pro: false, plan: null, lastBackup: null } };
     const leavesBySubject = {};
     const subjectByKey = {};
 

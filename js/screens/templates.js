@@ -20,7 +20,7 @@
     const p = actions.importProject({ name, category, tree, templateId });
     const c = TI.outline.count(tree);
     TI.ui.toast(`${p.name} added · ${c.top} subjects, ${c.leaves} topics`, { icon: 'check_circle', duration: 4000 });
-    TI.router.go('/');
+    TI.router.go('/project');
   }
 
   function aiSheet(mode = 'ai') {

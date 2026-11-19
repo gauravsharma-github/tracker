@@ -41,13 +41,13 @@
         </div>`;
     },
     actions: {
-      'proj-open': (el) => { actions.setActiveProject(el.dataset.id); TI.router.go('/'); },
+      'proj-open': (el) => { actions.setActiveProject(el.dataset.id); TI.router.go('/project'); },
       'subj-up': (el) => actions.moveSubject(el.dataset.id, -1),
       'subj-down': (el) => actions.moveSubject(el.dataset.id, 1),
       'proj-menu': (el) => {
         const p = sel.project(el.dataset.id); if (!p) return;
         TI.ui.openMenu(el, [
-          ...(p.archived ? [] : [{ icon: 'open_in_new', label: 'Open', onClick: () => { actions.setActiveProject(p.id); TI.router.go('/'); } }]),
+          ...(p.archived ? [] : [{ icon: 'open_in_new', label: 'Open', onClick: () => { actions.setActiveProject(p.id); TI.router.go('/project'); } }]),
           { icon: 'edit', label: 'Edit name, type & colour', onClick: () => TI.forms.projectForm(p) },
           { icon: 'file_copy', label: 'Share template (.json, code, link)', onClick: () => TI.router.go('/share-template/' + p.id) },
           { icon: 'insert_chart', label: 'Share progress', onClick: () => { actions.setActiveProject(p.id); TI.router.go('/share'); } },
@@ -57,7 +57,7 @@
             if (!p.archived && state.settings.activeProjectId === p.id) { const n = sel.projects()[0]; actions.setActiveProject(n ? n.id : null); }
           } },
           { sep: true },
-          { icon: 'delete', label: 'Delete', danger: true, onClick: async () => { if (await TI.ui.confirmDialog(`Delete ${p.name}?`, 'All its subjects, topics, study sessions, flashcards and notes will be deleted. This cannot be undone.')) actions.deleteProject(p.id); } },
+          { icon: 'delete', label: 'Delete', danger: true, onClick: async () => { const sids = new Set(sel.subjects(p.id).map((s) => s.id)); const files = state.attachments.filter((a) => sids.has(a.subjectId)).length; if (await TI.ui.confirmDialog(`Delete ${p.name}?`, `All its subjects, topics, study sessions, flashcards and notes${files ? ` and ${U.plural(files, 'attached file')} (also deleted from GitHub)` : ''} will be deleted. This cannot be undone.`)) actions.deleteProject(p.id); } },
         ]);
       },
     },

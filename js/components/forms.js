@@ -35,7 +35,7 @@
             if (project) { actions.updateProject(project.id, { name, category: cat, color }); ui().toast('Saved', { icon: 'check' }); } else {
               const p = actions.addProject({ name, category: cat, color });
               actions.setActiveProject(p.id);
-              TI.router.go('/');
+              TI.router.go('/project');
               ui().toast(`${name} created – add your first subject`, { icon: 'check_circle' });
             }
             a.close();
@@ -238,9 +238,10 @@
   // ---------- Project switcher menu ----------
   function projectMenu(anchor) {
     const cur = sel.activeProject();
-    const items = [{ heading: 'Exams & projects' }, ...sel.projects().map((p) => ({ label: p.name, dot: p.color, on: cur && p.id === cur.id, trail: U.pctInt(TI.stats.projectRatio(state, p.id)), onClick: () => { actions.setActiveProject(p.id); TI.router.go('/'); } }))];
+    const items = [{ heading: 'Exams & projects' }, ...sel.projects().map((p) => ({ label: p.name, dot: p.color, on: cur && p.id === cur.id, trail: U.pctInt(TI.stats.projectRatio(state, p.id)), onClick: () => { actions.setActiveProject(p.id); TI.router.go('/project'); } }))];
     items.push({ sep: true });
     items.push({ icon: 'add', label: 'Add exam / project', onClick: () => TI.router.go('/templates') });
+    items.push({ icon: 'grid_view', label: 'All projects (Dashboard)', onClick: () => TI.router.go('/') });
     items.push({ icon: 'tune', label: 'Manage projects', onClick: () => TI.router.go('/projects') });
     ui().openMenu(anchor, items, { align: 'left' });
   }

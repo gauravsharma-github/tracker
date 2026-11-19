@@ -13,14 +13,13 @@
     const today = U.today();
     const late = n.due && n.due < today && r < 1;
     const dueTag = n.due && r < 1 ? `<span class="due ${late ? 'late' : ''}" title="Due ${U.fmtDay(n.due)}">${U.icon('event', 'xs')}${n.due === today ? 'Today' : late ? 'Overdue' : U.fmtDate(U.parseDay(n.due))}</span>` : '';
-    const hasNote = state.notes.some((m) => m.nodeId === n.id);
     const running = TI.timer.state.status !== 'idle' && TI.timer.state.nodeId === n.id;
     let html = `<div class="node ${parent ? 'parent' : ''} ${open ? 'open' : ''}" data-node="${n.id}">
       <div class="node-main">
         <div class="title-row">
           ${parent ? `<span class="ms caret" data-act="node-open" data-id="${n.id}">chevron_right</span>` : ''}
           <span class="title" ${parent ? `data-act="node-open" data-id="${n.id}"` : ''} title="${U.esc(n.title)}">${U.esc(n.title)}</span>
-          ${hasNote ? U.icon('sticky_note_2', 'note-ic') : ''}${dueTag}
+          <span class="row-ics">${TI.attach.iconsHtml(s.id, n.id)}</span>${dueTag}
           ${t && opts.showTime ? `<span class="node-time">${U.fmtDur(t, { short: true })}</span>` : ''}
         </div>
         ${TI.ui.barRow(r, s.color)}
@@ -58,13 +57,18 @@
       { icon: 'edit', label: 'Rename', onClick: async () => { const v = await TI.ui.promptDialog({ title: 'Rename', value: n.title }); if (v && v.trim()) actions.updateNode(n.id, { title: v.trim() }); } },
       { icon: 'event', label: n.due ? `Due ${U.fmtDay(n.due)} – change` : 'Set due date', onClick: () => dueDialog(n) },
       { icon: 'sticky_note_2', label: 'Add note', onClick: () => TI.screens.notes.edit(null, { subjectId: n.subjectId, nodeId: n.id, title: n.title }) },
+      ...(sel.notesOn(n.subjectId, n.id).length ? [{ icon: 'notes', label: `Notes (${sel.notesOn(n.subjectId, n.id).length})`, onClick: () => TI.attach.openNotes(anchor, n.subjectId, n.id) }] : []),
+      { icon: 'attach_file', label: 'Attach PDF / audio', onClick: () => TI.attach.pick(n.subjectId, n.id) },
+      ...(TI.attach.countOn(n.subjectId, n.id) ? [{ icon: 'folder_open', label: `Attachments (${TI.attach.countOn(n.subjectId, n.id)})`, onClick: () => TI.attach.manage(n.subjectId, n.id) }] : []),
       { sep: true },
       { icon: 'arrow_upward', label: 'Move up', onClick: () => actions.moveNode(n.id, -1) },
       { icon: 'arrow_downward', label: 'Move down', onClick: () => actions.moveNode(n.id, 1) },
       { sep: true },
       { icon: 'delete', label: 'Delete', danger: true, onClick: async () => {
-        const count = TI.stats.descendants(state, n.id).length;
-        if (await TI.ui.confirmDialog(`Delete “${n.title}”?`, count ? `This also deletes ${U.plural(count, 'sub-topic')}. Study time stays in ${s ? s.name : 'the subject'}.` : 'Study time stays in the subject.')) actions.deleteNode(n.id);
+        const desc = TI.stats.descendants(state, n.id); const count = desc.length;
+        const ids = new Set([n.id, ...desc.map((d) => d.id)]); const files = state.attachments.filter((a) => ids.has(a.nodeId)).length;
+        const extra = files ? ` ${U.plural(files, 'attached file')} will be deleted from GitHub too.` : '';
+        if (await TI.ui.confirmDialog(`Delete “${n.title}”?`, (count ? `This also deletes ${U.plural(count, 'sub-topic')}. Study time stays in ${s ? s.name : 'the subject'}.` : 'Study time stays in the subject.') + extra)) actions.deleteNode(n.id);
       } },
     ]);
   }
