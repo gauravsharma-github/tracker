@@ -122,7 +122,7 @@
   };
 
   function findHandler(act) {
-    return (current && current.actions && current.actions[act]) || TI.tree.handlers[act] || TI.attach.handlers[act] || (TI.screens.cards.actions[act]) || globalActions[act];
+    return (current && current.actions && current.actions[act]) || TI.tree.handlers[act] || TI.attach.handlers[act] || TI.heatmap.handlers[act] || (TI.screens.cards.actions[act]) || globalActions[act];
   }
 
   $app.addEventListener('click', (e) => {

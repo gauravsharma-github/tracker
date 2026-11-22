@@ -59,6 +59,7 @@
     const last = state.sessions.filter((x) => x.projectId === p.id).sort((a, b) => b.start - a.start)[0];
     const resume = t.isActive() ? sel.subject(t.state.subjectId) : last ? sel.subject(last.subjectId) : subjects[0];
     return `<aside class="dash-aside">
+      ${TI.heatmap.render(p.id, { weeks: 20, compact: true })}
       <div class="card today-card">
         <div class="row" style="gap:16px">${TI.ui.ring(goal ? todaySec / goal : 0, 'var(--primary)', { size: 76, stroke: 7, label: `<span style="font-size:13px">${U.pctInt(goal ? Math.min(1, todaySec / goal) : 0)}</span>` })}
           <div class="grow"><div class="stat-label" style="margin:0">Today</div><div style="font-size:24px;font-weight:600" class="tabular">${U.fmtDur(todaySec, { noDays: true })}</div><div class="small muted">Goal ${U.fmtMin(state.settings.dailyGoalMin)}</div></div></div>
@@ -137,6 +138,7 @@
         <div class="dash-main">
           ${head}
           <div class="card datestrip-card">${TI.ui.dateStrip({ count: ctx.desktop ? 21 : 14, fn: (d) => st.projectDay(state, p.id, d), color: p.color })}</div>
+          ${ctx.wide ? '' : TI.heatmap.render(p.id, { weeks: ctx.desktop ? 30 : 20 })}
           ${kpis}
           ${filters}
           <div class="subject-list">${cards}</div>

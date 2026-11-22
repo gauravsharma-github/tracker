@@ -77,6 +77,7 @@
           ${TI.ui.kpi('task_alt', 'Topics done', `${topics.done}/${topics.all}`, U.pct(topics.all ? topics.done / topics.all : 0, 1), '#405FFF')}
           ${TI.ui.kpi('notifications_active', 'Due now', String(due), 'Cards and topics', '#C74FFA')}
         </div>
+        ${TI.heatmap.render('all', { weeks: ctx.desktop ? 53 : 20, title: 'Progress Heatmap · all projects' })}
         <div class="pj-grid">${order(open).map((p) => tile(p, facts.get(p.id), current && current.id === p.id)).join('')}
           <button class="pj-tile pj-add" data-act="nav" data-to="/templates">${U.icon('add_circle')}<b>Add exam / project</b><span>From 1000+ templates, AI or a friend's file</span></button>
         </div>
