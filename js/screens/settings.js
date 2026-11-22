@@ -61,6 +61,7 @@
     return `<div class="set-row">${U.icon('table_chart')}<div class="txt"><div class="ttl">Connected to your Google Sheet</div><div class="sync-line ${d.cls}" data-sync-status>${U.icon(d.icon)}<span>${U.esc(d.text)}${d.detail ? ` – ${U.esc(d.detail)}` : ''}</span></div></div><button class="btn sm" data-act="sheet-sync">${U.icon('sync')}Sync now</button></div>
       ${c.sheetUrl ? `<div class="set-row click" data-act="sheet-open">${U.icon('open_in_new')}<div class="txt"><div class="ttl">Open the sheet</div><div class="sub">See or analyse your raw data in Google Sheets</div></div></div>` : ''}
       <div class="set-row click" data-act="sheet-code">${U.icon('devices')}<div class="txt"><div class="ttl">Connect another device</div><div class="sub">Copy a connection code and paste it on your phone or another browser</div></div></div>
+      <div class="set-row click" data-act="sheet-link">${U.icon('bookmark_add')}<div class="txt"><div class="ttl">Copy setup link</div><div class="sub">Bookmark it. If this browser ever forgets the connection, open the bookmark to reconnect the sheet and GitHub in one click. Keep it private.</div></div></div>
       <div class="set-row">${U.icon('link')}<div class="txt"><div class="sub ellipsis" title="${U.esc(c.url || '')}">${U.esc(c.url || '')}</div></div><button class="btn sm ghost" data-act="sheet-disconnect">Disconnect</button></div>`;
   }
 
@@ -173,6 +174,7 @@
       'sheet-sync': () => TI.sync.syncNow(),
       'sheet-open': () => { const c = TI.api.connection(); if (c && c.sheetUrl) window.open(c.sheetUrl, '_blank', 'noopener'); },
       'sheet-code': () => TI.sync.copyCode(),
+      'sheet-link': () => TI.sync.copySetupLink(),
       'sheet-disconnect': () => TI.sync.disconnect(),
       'gh-setup': () => TI.attach.setupGithub(),
       'gh-disconnect': () => TI.attach.disconnectGithub(),

@@ -53,12 +53,25 @@
   // ---------- Preconditions ----------
   async function ready() {
     if (TI.api.mode() === 'sheets' && TI.api.backendVersion() < 2) {
-      await TI.ui.dialog({
-        title: 'Update your Google Sheet script',
-        message: 'Attachments need version 2 of backend/Code.gs. In your sheet open Extensions › Apps Script, replace the code with the new Code.gs, save, run <b>setup</b>, then Deploy › Manage deployments › ✏️ › Version: New version › Deploy. Then press Sync now in Settings.',
-        buttons: [{ label: 'OK', kind: 'primary', primary: true, value: () => true }],
-      });
-      return false;
+      // The saved version may be stale (script updated since the last pull): ask the sheet again first
+      let err = '';
+      try { await TI.api.syncNow(); } catch (e) { err = e.message; }
+      if (TI.api.backendVersion() < 2) {
+        const c = TI.api.connection() || {};
+        await TI.ui.dialog({
+          title: err ? 'Could not check your sheet script' : 'Your sheet still runs the old script',
+          html: err ? `<p>${U.esc(err)}</p><p>Attachments need version 2 of backend/Code.gs. Try again when the sheet is reachable.</p>`
+            : `<p>TrackIt just asked your web app and it answered <b>version ${TI.api.backendVersion()}</b>. Attachments need version 2. This usually means the new code was saved but not deployed:</p>
+              <ol class="steps small">
+                <li>In Apps Script check that <code>Code.gs</code> starts with <code>var BACKEND_VERSION = 2;</code> near the top, and press <b>Save</b>.</li>
+                <li><b>Deploy › Manage deployments</b> → select your existing web app → <b>✏️ Edit</b> → <b>Version: New version</b> → <b>Deploy</b>. (Saving alone doesn't change what the web app serves.)</li>
+                <li>If you used <b>New deployment</b> instead, it has a different URL. Either edit the old deployment as above, or reconnect TrackIt with the new URL.</li>
+              </ol>
+              <p class="tiny faint">TrackIt is connected to: <span class="mono" style="word-break:break-all">${U.esc(c.url || '')}</span></p>`,
+          buttons: [{ label: 'OK', kind: 'primary', primary: true, value: () => true }],
+        });
+        return false;
+      }
     }
     if (!GH().configured()) {
       const go = await TI.ui.confirmDialog('Connect your GitHub repo first', 'Attachments are stored in a private GitHub repository you own. Set it up once in Settings › Attachments (about 5 minutes).', 'Set up now', 'primary');

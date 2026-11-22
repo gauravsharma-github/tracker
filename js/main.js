@@ -173,6 +173,7 @@
   async function boot() {
     $view.innerHTML = '<div class="boot">Loading…</div>';
     TI.api.onSyncStatus(() => TI.sync.paint());
+    const linked = await TI.sync.fromSetupLink();
     try { await actions.boot(); } catch (e) {
       console.error(e);
       const sheets = TI.api.mode() === 'sheets';
@@ -189,6 +190,9 @@
     TI.router.onChange(() => { TI.ui.closeMenu(); TI.ui.closeAll(); render(true); });
     render();
     setTimeout(() => TI.reminders.check(), 1500);
+    if (linked) TI.ui.toast(linked, { icon: 'cloud_done', duration: 4500 });
+    // Ask Chrome to keep this site's data (it can still be wiped by "clear on exit" settings)
+    try { if (navigator.storage && navigator.storage.persist && TI.api.mode() === 'sheets') navigator.storage.persist(); } catch (e) { /* ignore */ }
   }
   boot();
   TI.app = { render, go };

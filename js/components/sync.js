@@ -123,9 +123,32 @@
     TI.ui.toast(ok ? 'Connection code copied – paste it on your other device. Keep it private.' : 'Could not copy', { icon: ok ? 'content_copy' : 'error', duration: 5000 });
   }
 
+  // Setup link: <site>#/connect/<connection code>. Bookmark it; opening it reconnects this browser
+  // (sheet + GitHub) if its saved settings were wiped. The code never leaves the browser (# part).
+  const setupLink = () => `${location.origin}${location.pathname}#/connect/${encodeURIComponent(api().connectionCode())}`;
+  async function copySetupLink() {
+    const ok = await U.copy(setupLink());
+    TI.ui.toast(ok ? 'Setup link copied – bookmark it. It contains your keys, so keep it private.' : 'Could not copy', { icon: ok ? 'bookmark_add' : 'error', duration: 6000 });
+  }
+  async function fromSetupLink() {
+    const m = location.hash.match(/^#\/connect\/(.+)$/);
+    if (!m) return null;
+    history.replaceState(null, '', location.pathname + location.search + '#/'); // don't leave keys in the address bar
+    const d = api().decodeCode(decodeURIComponent(m[1]));
+    if (!d) return null;
+    const cur = TI.storage.get('conn');
+    let msg = null;
+    if (!cur || cur.url !== d.url || cur.token !== d.token) {
+      await api().connect({ url: d.url, token: d.token, initial: 'remote' });
+      msg = 'Reconnected to your Google Sheet';
+    }
+    if (d.gh && TI.github && !TI.github.configured()) { TI.github.save(d.gh); msg = msg ? msg + ' and GitHub' : 'GitHub attachments reconnected'; }
+    return msg;
+  }
+
   async function syncNow() {
     try { await api().syncNow(); TI.ui.toast('Up to date', { icon: 'cloud_done' }); } catch (e) { TI.ui.toast(e.message, { icon: 'sync_problem', duration: 5000 }); }
   }
 
-  TI.sync = { describe, indicator, paint, connectSheet, disconnect, copyCode, syncNow };
+  TI.sync = { describe, indicator, paint, connectSheet, disconnect, copyCode, syncNow, copySetupLink, fromSetupLink };
 })(window.TI);

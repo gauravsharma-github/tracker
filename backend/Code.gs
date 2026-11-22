@@ -106,6 +106,7 @@ function showConnection() {
   ui.alert('TrackIt connection',
     'Web app URL:\n' + (url || '(not deployed yet – Deploy › New deployment › Web app)') +
     (url && /\/dev$/.test(url) ? '\n(This is the test URL. Copy the one ending in /exec from Deploy › Manage deployments.)' : '') +
+    (url ? '\n(Google sometimes shows an older deployment here. If it does not open, copy the Web app URL from Deploy › Manage deployments instead.)' : '') +
     '\n\nSecret key:\n' + ensureToken_() +
     '\n\nIn TrackIt open Settings › Google Sheet › Connect and paste both.', ui.ButtonSet.OK);
 }
