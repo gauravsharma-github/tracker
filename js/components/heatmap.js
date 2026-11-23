@@ -1,11 +1,12 @@
 // Progress heatmap: one square per day (columns = weeks), coloured by how many activities happened.
-// Activities: topic completed, study session, flashcard reviewed, flashcard created, note written, file attached.
+// Activities: topic stage ticked (Learn, revisions, interview test, re-practice), study session, flashcard reviewed,
+// flashcard created, note written, file attached.
 // Used on the all-projects Dashboard (scope 'all') and in each project view (scope = project id).
 (function (TI) {
   const U = TI.util;
   const { state } = TI.store;
   const KINDS = [
-    ['topics', 'topic completed', 'topics completed'],
+    ['stages', 'topic stage done', 'topic stages done'],
     ['sessions', 'study session', 'study sessions'],
     ['reviews', 'card reviewed', 'cards reviewed'],
     ['cards', 'card created', 'cards created'],
@@ -29,7 +30,7 @@
       if (!d) { d = { total: 0 }; days.set(k, d); }
       d.total++; d[kind] = (d[kind] || 0) + 1; total++;
     };
-    state.nodes.forEach((n) => { if (n.done && n.doneAt) add(subj.get(n.subjectId), n.doneAt, 'topics'); });
+    (state.stages || []).forEach((l) => add(l.projectId || subj.get(l.subjectId), l.at, 'stages'));
     state.sessions.forEach((s) => add(s.projectId || subj.get(s.subjectId), s.start, 'sessions'));
     state.reviews.forEach((r) => add(subj.get(r.subjectId), r.at, 'reviews'));
     state.cards.forEach((c) => add(subj.get(c.subjectId), c.createdAt, 'cards'));
@@ -111,14 +112,14 @@
       title: 'How we count activities',
       html: `<p>Each square is one day. Every one of these counts as one activity on the day it happened:</p>
         <ul class="steps small">
-          <li><b>Topic completed</b> – ticking off a topic, unit or chapter</li>
+          <li><b>Topic stage done</b> – each of a topic's five ticks (Learn, Revision 1, Revision 2, Interview test, Re-practice), including a Shaky or Failed test</li>
           <li><b>Study session</b> – each timer or manually logged session</li>
           <li><b>Card reviewed</b> – each flashcard you rate while reviewing</li>
           <li><b>Card created</b> – each new flashcard</li>
           <li><b>Note written</b> – each new note</li>
           <li><b>File attached</b> – each PDF or recording you upload</li>
         </ul>
-        <p class="small muted">Colours: 1–2, 3–5, 6–9 and 10+ activities a day. Unticking a topic or deleting something removes its activity. Grey squares are days still to come. Hover a square to see that day's breakdown.</p>`,
+        <p class="small muted">Colours: 1–2, 3–5, 6–9 and 10+ activities a day. Undoing a stage or deleting something removes its activity. Grey squares are days still to come. Hover a square to see that day's breakdown.</p>`,
       buttons: [{ label: 'Got it', kind: 'primary', primary: true, value: () => true }],
     });
   }

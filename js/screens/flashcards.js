@@ -31,11 +31,22 @@
       <div class="card tip-card" style="margin-top:16px"><div class="row">${U.icon('auto_awesome', 'faint')}<div class="small muted grow">Bulk-import cards made by ChatGPT or Gemini: open a deck → <b>Add Cards</b> → <b>Bulk import</b>.</div></div></div>`;
   }
 
+  // Interview cards linked to a topic show its name
+  function topicTag(c) {
+    const n = c.nodeId && sel.node(c.nodeId); if (!n) return '';
+    return `<span class="fc-topic ellipsis" title="${U.esc(TI.stats.pathOf(state, n.id).map((x) => x.title).join(' › '))}">${U.icon('school', 'xs')}${U.esc(n.title)}</span>`;
+  }
+  function topicSelect(subjectId, cur) {
+    const leaves = TI.stats.leaves(state, subjectId);
+    if (!leaves.length) return '';
+    return `<div class="field"><label>Topic (for its interview test)</label><select class="input" id="c-topic-node"><option value="">No topic – whole subject</option>${leaves.map(({ node, path }) => `<option value="${node.id}" ${cur === node.id ? 'selected' : ''}>${U.esc([...path, node.title].join(' › '))}</option>`).join('')}</select></div>`;
+  }
+
   function cardItem(c, s) {
     const show = revealed.has(c.id);
     const label = c.state === 'new' && c.reps === 0 ? 'New' : U.relDue(c.due);
     return `<div class="fc-item" style="--c:${s.color}">
-      <div class="row"><span class="fc-when">${U.icon(c.state === 'new' && c.reps === 0 ? 'fiber_new' : 'schedule')}${label}</span><div class="grow"></div>
+      <div class="row"><span class="fc-when">${U.icon(c.state === 'new' && c.reps === 0 ? 'fiber_new' : 'schedule')}${label}</span>${topicTag(c)}<div class="grow"></div>
         <button class="icon-btn sm muted" data-act="card-menu" data-id="${c.id}" aria-label="Card options">${U.icon('more_vert')}</button></div>
       <div class="fc-front">${U.esc(c.front)}</div>
       <button class="fc-back ${show ? 'shown' : ''}" data-act="card-reveal" data-id="${c.id}" title="${show ? 'Hide' : 'Show'} answer">${show ? U.esc(c.back) : '*******'}</button>
@@ -71,33 +82,38 @@
     </div>`;
   }
 
-  function addSheet(subjectId, tab = 'single', editCard = null) {
+  function addSheet(subjectId, tab = 'single', editCard = null, presetNode = null) {
     const s = sel.subject(subjectId); if (!s) return;
     let mode = editCard ? 'single' : tab;
+    let topic = editCard ? editCard.nodeId || '' : presetNode || '';
+    const topicNode = () => (topic && sel.node(topic)) || null;
     let added = 0;
     const draw = () => {
       if (mode === 'single') {
         return `${editCard ? '' : TI.ui.seg([{ id: 'single', label: 'Single card' }, { id: 'bulk', label: 'Bulk import' }], mode, 'tab', 'alt')}
           <div class="field" style="margin-top:14px"><label>Front (question)</label><textarea class="textarea" id="c-front" rows="3" autofocus placeholder="e.g. What is the SI unit of force?">${U.esc(editCard ? editCard.front : '')}</textarea></div>
           <div class="field"><label>Back (answer)</label><textarea class="textarea" id="c-back" rows="3" placeholder="e.g. Newton (N)">${U.esc(editCard ? editCard.back : '')}</textarea></div>
+          ${topicSelect(subjectId, topic)}
           ${added ? `<div class="small" style="color:var(--success)">${U.icon('check_circle', 'xs')} ${U.plural(added, 'card')} added</div>` : ''}`;
       }
       return `${TI.ui.seg([{ id: 'single', label: 'Single card' }, { id: 'bulk', label: 'Bulk import' }], mode, 'tab', 'alt')}
         <div class="ai-steps">
           <div class="ai-step"><span class="n">1</span><div class="grow"><b>Ask an AI app for cards</b><div class="small muted">Copy this prompt into ChatGPT, Gemini or Claude.</div>
-            <div class="row" style="margin-top:8px"><input class="input" id="c-topic" value="${U.esc(s.name)}" style="min-height:38px" /><button class="btn sm" data-act="copy-prompt">${U.icon('content_copy')}Copy prompt</button></div></div></div>
+            <div class="row" style="margin-top:8px"><input class="input" id="c-topic" value="${U.esc(topicNode() ? `${s.name}: ${topicNode().title} – interview questions` : s.name)}" style="min-height:38px" /><button class="btn sm" data-act="copy-prompt">${U.icon('content_copy')}Copy prompt</button></div></div></div>
           <div class="ai-step"><span class="n">2</span><div class="grow"><b>Paste the result</b><div class="small muted">One card per line as <code>question :: answer</code>. Tabs, “Q: / A:” pairs, CSV and JSON also work.</div></div></div>
         </div>
+        ${topicSelect(subjectId, topic)}
         <textarea class="textarea mono" id="c-bulk" rows="9" placeholder="What is the capital of Australia? :: Canberra&#10;Largest planet? :: Jupiter"></textarea>
         <div class="small muted" id="c-preview" style="margin-top:8px">Paste cards to see a preview.</div>`;
     };
     const api = TI.ui.openSheet({
-      title: editCard ? 'Edit card' : `Add cards · ${s.name}`, html: draw(),
+      title: editCard ? 'Edit card' : topicNode() ? `Interview cards · ${topicNode().title}` : `Add cards · ${s.name}`, html: draw(),
       footer: editCard ? '<button class="btn ghost" data-close>Cancel</button><button class="btn primary" data-act="save">Save</button>' : '<button class="btn ghost" data-close>Done</button><button class="btn primary" data-act="save">Add</button>',
       onMount(a) {
         const wire = () => {
           const bulk = a.el.querySelector('#c-bulk');
           if (bulk) bulk.addEventListener('input', () => { const n = TI.outline.parseCards(bulk.value).length; a.el.querySelector('#c-preview').innerHTML = n ? `${U.icon('check_circle', 'xs')} <b>${U.plural(n, 'card')}</b> ready to import` : 'No cards recognised yet.'; });
+          const tsel = a.el.querySelector('#c-topic-node'); if (tsel) tsel.addEventListener('change', () => { topic = tsel.value; });
           const front = a.el.querySelector('#c-front');
           if (front) setTimeout(() => front.focus(), 30);
           a.el.querySelectorAll('#c-front,#c-back').forEach((t) => t.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); a.el.querySelector('[data-act="save"]').click(); } }));
@@ -110,12 +126,12 @@
             if (mode === 'bulk') {
               const cards = TI.outline.parseCards(a.el.querySelector('#c-bulk').value);
               if (!cards.length) { TI.ui.toast('No cards recognised', { icon: 'error' }); return; }
-              actions.addCards(subjectId, cards); TI.ui.toast(`Imported ${U.plural(cards.length, 'card')}`, { icon: 'check_circle' }); a.close(); return;
+              actions.addCards(subjectId, cards.map((c) => ({ ...c, nodeId: topic || null }))); TI.ui.toast(`Imported ${U.plural(cards.length, 'card')}`, { icon: 'check_circle' }); a.close(); return;
             }
             const f = a.el.querySelector('#c-front').value.trim(); const b = a.el.querySelector('#c-back').value.trim();
             if (!f || !b) { (f ? a.el.querySelector('#c-back') : a.el.querySelector('#c-front')).focus(); return; }
-            if (editCard) { actions.updateCard(editCard.id, { front: f, back: b }); a.close(); return; }
-            actions.addCards(subjectId, [{ front: f, back: b }]); added++;
+            if (editCard) { actions.updateCard(editCard.id, { front: f, back: b, nodeId: topic || null }); a.close(); return; }
+            actions.addCards(subjectId, [{ front: f, back: b, nodeId: topic || null }]); added++;
             a.setBody(draw()); wire();
           },
         });

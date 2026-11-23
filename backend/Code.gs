@@ -18,23 +18,25 @@
  * "@OnlyCurrentDoc" limits the script to this one spreadsheet.
  */
 
-var BACKEND_VERSION = 2;
+var BACKEND_VERSION = 3;
 
 // Column types: s = text, n = number, t = timestamp (ms), b = true/false, j = JSON text
 var SCHEMA = {
   projects: [['id', 's'], ['name', 's'], ['category', 's'], ['color', 's'], ['templateId', 's'], ['order', 'n'], ['archived', 'b'], ['createdAt', 't'], ['updatedAt', 't']],
   subjects: [['id', 's'], ['projectId', 's'], ['name', 's'], ['color', 's'], ['order', 'n'], ['createdAt', 't']],
-  nodes: [['id', 's'], ['subjectId', 's'], ['parentId', 's'], ['title', 's'], ['done', 'b'], ['doneAt', 't'], ['due', 's'], ['order', 'n'], ['createdAt', 't']],
+  nodes: [['id', 's'], ['subjectId', 's'], ['parentId', 's'], ['title', 's'], ['done', 'b'], ['doneAt', 't'], ['due', 's'], ['order', 'n'], ['createdAt', 't'], ['stage', 'n'], ['stageDue', 's']],
   sessions: [['id', 's'], ['projectId', 's'], ['subjectId', 's'], ['nodeId', 's'], ['start', 't'], ['duration', 'n'], ['mode', 's'], ['manual', 'b']],
-  cards: [['id', 's'], ['subjectId', 's'], ['front', 's'], ['back', 's'], ['ease', 'n'], ['interval', 'n'], ['reps', 'n'], ['lapses', 'n'], ['due', 't'], ['state', 's'], ['lastReviewed', 't'], ['createdAt', 't']],
+  cards: [['id', 's'], ['subjectId', 's'], ['nodeId', 's'], ['front', 's'], ['back', 's'], ['ease', 'n'], ['interval', 'n'], ['reps', 'n'], ['lapses', 'n'], ['due', 't'], ['state', 's'], ['lastReviewed', 't'], ['createdAt', 't']],
   reviews: [['id', 's'], ['cardId', 's'], ['subjectId', 's'], ['grade', 's'], ['at', 't']],
   notes: [['id', 's'], ['subjectId', 's'], ['nodeId', 's'], ['title', 's'], ['body', 's'], ['pinned', 'b'], ['createdAt', 't'], ['updatedAt', 't']],
   blocks: [['id', 's'], ['date', 's'], ['start', 's'], ['end', 's'], ['subjectId', 's'], ['nodeId', 's'], ['title', 's'], ['repeat', 's'], ['until', 's'], ['doneDates', 'j'], ['skipDates', 'j'], ['createdAt', 't']],
   // v2: PDF / audio files kept in your GitHub repo (this tab only stores where they are)
   attachments: [['id', 's'], ['projectId', 's'], ['subjectId', 's'], ['nodeId', 's'], ['kind', 's'], ['name', 's'], ['path', 's'], ['repo', 's'], ['branch', 's'], ['sha', 's'], ['size', 'n'], ['mime', 's'], ['duration', 'n'], ['createdAt', 't'], ['updatedAt', 't']],
+  // v3: five-stage mastery – one row per tick (Learn, Revision 1, Revision 2, Interview test, Re-practice)
+  stages: [['id', 's'], ['nodeId', 's'], ['subjectId', 's'], ['projectId', 's'], ['stage', 'n'], ['result', 's'], ['at', 't'], ['early', 'b'], ['toStage', 'n'], ['prevStage', 'n'], ['prevDue', 's'], ['prevDone', 'b'], ['prevDoneAt', 't']],
 };
 var SETTINGS_TAB = 'settings';
-var NULLABLE = { parentId: 1, nodeId: 1, templateId: 1, due: 1, until: 1 };
+var NULLABLE = { parentId: 1, nodeId: 1, templateId: 1, due: 1, until: 1, stageDue: 1, prevDue: 1 };
 var TIME_TEXT = { start: 1, end: 1 };
 var MAX_CELL = 49000;
 

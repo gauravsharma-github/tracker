@@ -233,7 +233,7 @@
     const r = U.rng(20241207);
     const pick = (arr) => arr[Math.floor(r() * arr.length)];
     const now = Date.now();
-    const db = { projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [], settings: defaultSettings(), account: { signedIn: false, name: '', email: '', pro: false, plan: null, lastBackup: null } };
+    const db = { projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [], stages: [], settings: defaultSettings(), account: { signedIn: false, name: '', email: '', pro: false, plan: null, lastBackup: null } };
     const leavesBySubject = {};
     const subjectByKey = {};
 
@@ -253,7 +253,21 @@
           if (n.children.length) {
             add(n.children, node.id);
           } else {
-            if (n.done) { node.done = true; node.doneAt = now - Math.floor(r() * 30) * 86400000 - Math.floor(r() * 50000000); }
+            node.stage = 0; node.stageDue = null;
+            if (n.done) {
+              // Walk the five-stage ladder from the day it was learned; stop at today (or leave one overdue)
+              let at = now - Math.floor(r() * 30) * 86400000 - Math.floor(r() * 50000000); let st = 0; const gaps = [1, 7, 7, 7];
+              while (st < 5 && at <= now) {
+                const k = st + 1; const res = k === 4 ? 'pass' : '';
+                db.stages.push({ id: U.uid('g_'), nodeId: node.id, subjectId: subject.id, projectId: project.id, stage: k, result: res, at, early: false, toStage: k, prevStage: st, prevDue: null, prevDone: false, prevDoneAt: null });
+                st = k; if (st === 5) { node.done = true; node.doneAt = at; break; }
+                const next = at + (gaps[st - 1] + (r() < 0.3 ? 1 : 0)) * 86400000 + Math.floor(r() * 3600000);
+                node.stageDue = U.dayKey(next);
+                if (next > now || r() < 0.18) break; // not due yet, or skipped (overdue)
+                at = next;
+              }
+              node.stage = st; if (st === 5) node.stageDue = null;
+            }
             leavesBySubject[subject.id].push(node);
           }
         });
@@ -262,7 +276,7 @@
     });
 
     // A few due dates on open topics in the active project
-    const openSsc = db.nodes.filter((n) => n.subjectId.startsWith('s_ssc') && !n.done && leavesBySubject[n.subjectId].includes(n));
+    const openSsc = db.nodes.filter((n) => n.subjectId.startsWith('s_ssc') && !n.stage && leavesBySubject[n.subjectId].includes(n));
     [0, 3, 7, 11].forEach((i, k) => { if (openSsc[i]) openSsc[i].due = U.addDaysKey(U.today(), [-1, 0, 2, 5][k]); });
 
     // Study sessions over the past ~7 weeks
@@ -297,6 +311,11 @@
           db.cards.push(c);
         });
       });
+    });
+    // Link a few cards to a topic waiting for its interview test, so the demo has a test to take
+    Object.keys(leavesBySubject).forEach((sid) => {
+      const atTest = leavesBySubject[sid].find((n) => n.stage === 3);
+      if (atTest) db.cards.filter((c) => c.subjectId === sid).slice(0, 3).forEach((c) => { c.nodeId = atTest.id; });
     });
     // two reviews already done today
     db.cards.filter((c) => c.subjectId === 's_ssc_3').slice(0, 1).forEach((c) => db.reviews.push({ id: U.uid('r_'), cardId: c.id, subjectId: c.subjectId, grade: 'good', at: now - 2 * 3600000 }));

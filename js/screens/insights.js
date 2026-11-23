@@ -25,7 +25,7 @@
       const activeDays = new Set(inRange.map((s) => U.dayKey(s.start))).size;
       const scope = scopeAll ? { type: 'all' } : { type: 'project', id: p.id };
       const streak = TI.stats.streaks(state, scope);
-      const doneTopics = state.nodes.filter((n) => sids.has(n.subjectId) && n.done && (n.doneAt || 0) >= from).length;
+      const doneTopics = (state.stages || []).filter((l) => sids.has(l.subjectId) && l.at >= from && l.result !== 'shaky' && l.result !== 'fail').length;
       const reviews = state.reviews.filter((r) => sids.has(r.subjectId) && r.at >= from).length;
 
       // Chart buckets
@@ -58,7 +58,7 @@
           ${TI.ui.kpi('schedule', 'Time studied', U.fmtDur(total, { noDays: true }), delta == null ? `last ${range.days} days` : `${delta >= 0 ? '▲' : '▼'} ${U.pctInt(Math.abs(delta))} vs previous`, '#405FFF')}
           ${TI.ui.kpi('avg_time', 'Daily average', U.fmtDur(total / range.days, { noDays: true }), `${activeDays} of ${range.days} days active`, '#25AE97')}
           ${TI.ui.kpi('local_fire_department', 'Current streak', U.plural(streak.current, 'day'), `Best ${U.plural(streak.best, 'day')}`, '#F06A3A')}
-          ${TI.ui.kpi('task_alt', 'Topics completed', String(doneTopics), `in the last ${range.days} days`, '#C74FFA')}
+          ${TI.ui.kpi('task_alt', 'Stages ticked', String(doneTopics), `in the last ${range.days} days`, '#C74FFA')}
           ${TI.ui.kpi('style', 'Cards reviewed', String(reviews), 'spaced repetition', '#E0AD3C')}
           ${TI.ui.kpi('wb_sunny', 'Best time', total ? `${U.fmtHmLabel(U.minToHm(bestHour * 60), state.settings.h12)}` : '–', total ? `You focus most in the ${part}` : 'Study to find out', '#64B7D4')}
         </div>

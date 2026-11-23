@@ -26,7 +26,7 @@
       </div>
       <div class="acts">
         <button class="icon-btn sm muted menu-btn" data-act="node-menu" data-id="${n.id}" aria-label="More for ${U.esc(n.title)}">${U.icon('more_vert')}</button>
-        <button class="check-btn ${r >= 1 ? 'done' : r > 0 ? 'partial' : ''}" data-act="node-check" data-id="${n.id}" aria-label="${r >= 1 ? 'Mark not done' : 'Mark done'}" aria-pressed="${r >= 1}">${U.icon('check')}</button>
+        ${parent ? unitCheck(n, r) : ticks(n)}
         ${opts.showPlay ? `<button class="play-btn small ${running ? 'running' : ''}" style="--c:${s.color}" data-act="node-play" data-id="${n.id}" aria-label="Study ${U.esc(n.title)}">${U.icon(running ? 'graphic_eq' : 'play_arrow')}</button>` : ''}
       </div>
     </div>`;
@@ -35,6 +35,23 @@
         <button class="btn outline sm block add-topic" style="--c:${s.color}" data-act="node-add" data-subject="${s.id}" data-parent="${n.id}">Add New Topic</button></div>`;
     }
     return html;
+  }
+
+  // Five stage ticks for a topic: filled = done, outlined = next (amber ring due today, red overdue), dim = later
+  function ticks(n) {
+    const ST = TI.stages; const s = ST.stageOf(n); const ds = ST.dueState(n);
+    let h = '';
+    for (let k = 0; k < ST.N; k++) {
+      const cls = k < s ? 'done' : k === s ? `next ${ds === 'over' ? 'over' : ds === 'due' ? 'due' : ''}` : 'later';
+      h += `<button class="check-btn stg ${cls}" data-act="stage-tick" data-id="${n.id}" data-k="${k}" title="${U.esc(ST.tooltip(state, n, k))}" aria-label="${U.esc(ST.tooltip(state, n, k))}">${U.icon('check')}</button>`;
+    }
+    return `<div class="stg-ticks">${h}</div>`;
+  }
+  // Units / chapters: one tick showing how far their topics are (filled when all mastered)
+  function unitCheck(n, r) {
+    const p = TI.stats.nodeProgress(state, n.id);
+    const tip = `${p.done} of ${U.plural(p.leaves, 'topic')} mastered · ${U.pctInt(r)} of all stages`;
+    return `<button class="check-btn ${p.leaves && p.done === p.leaves ? 'done' : r > 0 ? 'partial' : ''}" data-act="node-check" data-id="${n.id}" title="${U.esc(tip)}" aria-label="${U.esc(tip)}">${U.icon('check')}</button>`;
   }
 
   function render(subjectId, opts = {}) {
@@ -55,6 +72,11 @@
       { icon: 'play_circle', label: 'Study this now', onClick: () => startOn(n) },
       { icon: 'subdirectory_arrow_right', label: 'Add sub-topics', onClick: () => TI.forms.topicForm(n.subjectId, n.id) },
       { icon: 'edit', label: 'Rename', onClick: async () => { const v = await TI.ui.promptDialog({ title: 'Rename', value: n.title }); if (v && v.trim()) actions.updateNode(n.id, { title: v.trim() }); } },
+      ...(TI.stats.children(state, n.subjectId, n.id).length ? [] : [
+        { icon: 'timeline', label: 'Stage history', onClick: () => historySheet(n) },
+        ...(TI.stages.logsOf(state, n.id).length ? [{ icon: 'undo', label: `Undo last stage`, onClick: () => undo(n.id) }] : []),
+        { icon: 'style', label: `Interview cards (${topicCards(n).length})`, onClick: () => TI.screens.cards.addSheet(n.subjectId, 'single', null, n.id) },
+      ]),
       { icon: 'event', label: n.due ? `Due ${U.fmtDay(n.due)} – change` : 'Set due date', onClick: () => dueDialog(n) },
       { icon: 'sticky_note_2', label: 'Add note', onClick: () => TI.screens.notes.edit(null, { subjectId: n.subjectId, nodeId: n.id, title: n.title }) },
       ...(sel.notesOn(n.subjectId, n.id).length ? [{ icon: 'notes', label: `Notes (${sel.notesOn(n.subjectId, n.id).length})`, onClick: () => TI.attach.openNotes(anchor, n.subjectId, n.id) }] : []),
@@ -96,21 +118,119 @@
     TI.router.go('/subject/' + n.subjectId);
   }
 
-  function check(id) {
+  const topicCards = (n) => state.cards.filter((c) => c.nodeId === n.id);
+  const nextLine = (r) => (r.toStage >= TI.stages.N ? 'Topic mastered 🎉' : `${TI.stages.NAMES[r.toStage]} due ${r.due === U.addDaysKey(U.today(), 1) ? 'tomorrow' : U.fmtDate(U.parseDay(r.due))}`);
+
+  function afterStage(n, r) {
+    const ST = TI.stages; const s = sel.subject(n.subjectId);
+    let msg;
+    if (r.result === 'shaky') msg = `Interview test again in ${ST.SHAKY_DAYS} days`;
+    else if (r.result === 'fail') msg = `Back to Revision 2 · due tomorrow`;
+    else msg = `${ST.NAMES[r.stage - 1]} done · ${nextLine(r)}`;
+    TI.ui.toast(msg, { icon: r.toStage >= ST.N ? 'military_tech' : 'check_circle', duration: 4500, action: { label: 'Undo', fn: () => undo(n.id) } });
+    if (r.toStage >= ST.N && s && TI.stats.subjectProgress(state, s.id).done === TI.stats.subjectProgress(state, s.id).leaves) setTimeout(() => TI.ui.toast(`🎉 ${s.name}: every topic mastered!`, { icon: 'celebration', duration: 4500 }), 900);
+  }
+
+  async function earlyOk(n) {
+    const ST = TI.stages; const s = ST.stageOf(n);
+    if (!ST.isEarly(n)) return { ok: true, early: false };
+    const name = ST.NAMES[s];
+    const why = s === 1 ? 'Revising too soon makes the next recall weaker.' : s === 4 ? 'Doing it now gives you less time to forget and re-learn.' : 'Spacing the stages out is what makes the topic stick.';
+    const ok = await TI.ui.confirmDialog(`Mark ${name} done early?`, `${name} is due ${ST.when(n.stageDue)}. ${why}`, 'Mark done anyway', 'primary');
+    return { ok, early: true };
+  }
+
+  async function tick(id, k) {
     const n = sel.node(id); if (!n) return;
-    const nowDone = actions.toggleNode(id);
-    const s = sel.subject(n.subjectId);
-    if (nowDone && s && TI.stats.subjectRatio(state, s.id) >= 1) TI.ui.toast(`🎉 ${s.name} is 100% complete!`, { icon: 'celebration', duration: 4500 });
+    const ST = TI.stages; const s = ST.stageOf(n);
+    if (k > s) { TI.ui.toast(`Finish ${ST.NAMES[s]} first`, { icon: 'info' }); return; }
+    if (k < s) {
+      if (k !== s - 1) { TI.ui.toast('Undo works one stage at a time, from the last one', { icon: 'info' }); return; }
+      if (await TI.ui.confirmDialog(`Undo ${ST.NAMES[k]}?`, `“${n.title}” goes back to ${ST.NAMES[k]}.`, 'Undo', 'primary')) undo(id);
+      return;
+    }
+    if (s === 3) { testSheet(n); return; }
+    const e = await earlyOk(n); if (!e.ok) return;
+    const r = actions.completeStage(id, { early: e.early });
+    if (r) afterStage(n, r);
+  }
+
+  function undo(id) {
+    const n = sel.node(id); const last = actions.undoStage(id);
+    if (!last || !n) return;
+    TI.ui.toast(`Undone · ${n.title} is back at ${TI.stages.NAMES[TI.stages.stageOf(n)] || 'Learn'}`, { icon: 'undo' });
+  }
+
+  // Interview test: practise this topic's flashcards, then record Pass / Shaky / Fail
+  function testSheet(n) {
+    const ST = TI.stages; const cards = topicCards(n); const early = ST.isEarly(n);
+    TI.ui.openSheet({
+      title: `Interview test · ${n.title}`,
+      html: `${early ? `<div class="cx-err" style="margin-bottom:12px">${U.icon('warning')}<span>The interview test is due ${U.esc(ST.when(n.stageDue))}. Testing early gives you less time to forget, so it tells you less.</span></div>` : ''}
+        <p class="muted" style="margin-top:0">${cards.length ? `Answer this topic's ${U.plural(cards.length, 'interview card')} out loud, then record how it went.` : 'This topic has no interview cards yet. Add some questions, or record the result of a test you did elsewhere.'}</p>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          ${cards.length ? `<button class="btn primary" data-act="start">${U.icon('style')}Start test (${cards.length})</button>` : ''}
+          <button class="btn" data-act="cards">${U.icon('add')}${cards.length ? 'Add more cards' : 'Add interview cards'}</button>
+        </div>
+        <div class="small muted" style="margin:18px 0 8px">Record the result</div>
+        <div class="test-res">
+          <button class="test-opt pass" data-act="res" data-r="pass">${U.icon('verified')}<b>Pass</b><span>Re-practice in ${ST.GAP[3]} days</span></button>
+          <button class="test-opt shaky" data-act="res" data-r="shaky">${U.icon('help')}<b>Shaky</b><span>Test again in ${ST.SHAKY_DAYS} days</span></button>
+          <button class="test-opt fail" data-act="res" data-r="fail">${U.icon('replay')}<b>Fail</b><span>Back to Revision 2</span></button>
+        </div>`,
+      footer: '<button class="btn ghost" data-close>Close</button>',
+      onMount(a) {
+        TI.forms.onAct(a, {
+          start() { a.close(); TI.router.go(`/study/${n.subjectId}?topic=${n.id}&test=1`); },
+          cards() { a.close(); TI.screens.cards.addSheet(n.subjectId, 'single', null, n.id); },
+          res(el) { a.close(); recordTest(n.id, el.dataset.r, early); },
+        });
+      },
+    });
+  }
+  function recordTest(id, result, early = TI.stages.isEarly(sel.node(id) || {})) {
+    const n = sel.node(id); if (!n || TI.stages.stageOf(n) !== 3) return;
+    const r = actions.completeStage(id, { result, early });
+    if (r) afterStage(n, r);
+  }
+
+  function historySheet(n) {
+    const ST = TI.stages; const logs = ST.logsOf(state, n.id); const s = ST.stageOf(n);
+    const rows = logs.map((l) => {
+      const label = l.stage === 4 && l.result ? `Interview test · ${l.result}` : ST.NAMES[l.stage - 1];
+      const ic = l.result === 'fail' ? 'replay' : l.result === 'shaky' ? 'help' : 'check_circle';
+      return `<div class="list-item"><span class="lead" style="--c:${l.result === 'fail' ? 'var(--danger)' : l.result === 'shaky' ? 'var(--warning)' : 'var(--success)'}">${U.icon(ic)}</span><div class="txt"><div class="ttl">${U.esc(label)}${l.early ? ' <span class="small muted">(early)</span>' : ''}${l.migrated ? ' <span class="small muted">(from the old tick)</span>' : ''}</div><div class="sub">${U.esc(U.fmtDay(U.dayKey(l.at)))} · ${U.esc(U.fmtTime ? U.fmtTime(l.at) : '')}</div></div></div>`;
+    }).join('');
+    const next = s >= ST.N ? `${U.icon('military_tech')} Mastered` : s === 0 ? `Next: ${ST.NAMES[0]}` : `Next: ${ST.NAMES[s]} · ${n.stageDue ? (ST.dueState(n) === 'over' ? 'overdue since ' : 'due ') + U.fmtDay(n.stageDue) : ''}`;
+    TI.ui.openSheet({
+      title: `Stage history · ${n.title}`,
+      html: `<div class="row" style="gap:10px;margin-bottom:12px">${ticks(n).replace(/data-act="stage-tick"/g, 'tabindex="-1"')}<span class="muted">${U.pctInt(s / ST.N)}</span></div>
+        <div class="small muted" style="margin-bottom:10px">${next}</div>
+        ${rows || '<div class="muted">No stages done yet.</div>'}`,
+      footer: `${logs.length ? '<button class="btn ghost danger" data-act="undo">Undo last stage</button>' : ''}<button class="btn" data-close>Close</button>`,
+      onMount(a) { TI.forms.onAct(a, { undo() { a.close(); undo(n.id); } }); },
+    });
+  }
+
+  // Units / chapters: Learn-done for all their not-started topics
+  async function check(id) {
+    const n = sel.node(id); if (!n) return;
+    const todo = TI.stats.descendants(state, id).filter((d) => !TI.stats.children(state, d.subjectId, d.id).length && TI.stages.stageOf(d) === 0).length;
+    if (!todo) { TI.ui.toast('Every topic here has started. Tick the stages topic by topic.', { icon: 'info' }); return; }
+    if (!(await TI.ui.confirmDialog(`Mark Learn done for ${U.plural(todo, 'topic')}?`, `All not-started topics in “${n.title}” get stage 1 (Learn) done today. Revision 1 is then due tomorrow.`, 'Mark Learn done', 'primary'))) return;
+    const c = actions.learnAll(id);
+    TI.ui.toast(`Learn done for ${U.plural(c, 'topic')} · Revision 1 due tomorrow`, { icon: 'check_circle' });
   }
 
   // Global click actions (wired in main.js)
   const handlers = {
     'node-open': (el) => actions.toggleUiFlag('expandedNodes', el.dataset.id),
     'node-check': (el) => check(el.dataset.id),
+    'stage-tick': (el) => tick(el.dataset.id, +el.dataset.k),
     'node-menu': (el) => nodeMenu(el, el.dataset.id),
     'node-play': (el) => { const n = sel.node(el.dataset.id); if (n) startOn(n); },
     'node-add': (el) => TI.forms.topicForm(el.dataset.subject, el.dataset.parent || null),
   };
 
-  TI.tree = { render, handlers, startOn };
+  TI.tree = { render, handlers, startOn, ticks, testSheet, recordTest, historySheet, undo };
 })(window.TI);

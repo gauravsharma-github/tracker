@@ -11,7 +11,8 @@
     const walk = (sid, parentId) => TI.stats.children(state, sid, parentId).map((n) => {
       const kids = walk(sid, n.id);
       const o = { title: n.title, child: kids };
-      if (withProgress && !kids.length && n.done) o.done = true;
+      // progress: stage 1–5 of the five-stage ladder (done = mastered, for older apps)
+      if (withProgress && !kids.length && TI.stages.stageOf(n) > 0) { o.stage = TI.stages.stageOf(n); if (o.stage === TI.stages.N) o.done = true; }
       return o;
     });
     return { title: p.name, child: sel.subjects(pid).map((s) => ({ title: s.name, child: walk(s.id, null) })) };

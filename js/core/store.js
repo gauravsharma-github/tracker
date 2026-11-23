@@ -6,7 +6,7 @@
 
   const state = {
     ready: false, rev: 0,
-    projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [],
+    projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [], stages: [],
     settings: {}, account: {},
     ui: Object.assign({ expandedSubjects: {}, expandedNodes: {}, dashFilter: 'all', notesFilter: 'all', notesQuery: '', insightsRange: 'week', insightsScope: 'project', shareOpts: null }, TI.storage.get('ui', {})),
   };
@@ -86,16 +86,19 @@
   // ---------------- Actions ----------------
   const actions = {
     async boot() {
-      api.onRemoteData((d) => { Object.assign(state, d); bump(); });
+      api.onRemoteData((d) => { Object.assign(state, d); if (!state.stages) state.stages = []; bump(); actions.migrateStages(); });
       const d = await api.loadAll();
       Object.assign(state, d, { ready: true });
+      if (!state.stages) state.stages = [];
       bump();
+      actions.migrateStages();
     },
     // Reload everything from the current backend (after connecting / disconnecting a Google Sheet)
     async reload() {
       const d = await api.loadAll();
       TI.ops.COLLECTIONS.forEach((c) => { state[c] = []; });
       Object.assign(state, d, { ready: true });
+      if (!state.stages) state.stages = [];
       if (TI.timer && TI.timer.state.subjectId && !sel.subject(TI.timer.state.subjectId)) TI.timer.reset();
       bump();
     },
@@ -130,6 +133,7 @@
       const drop = (coll, f) => { const ids = state[coll].filter(f).map((x) => x.id); state[coll] = state[coll].filter((x) => !f(x)); if (ids.length) api.remove(coll, ids).catch(fail); };
       dropAttachments((a) => sids.has(a.subjectId));
       drop('nodes', (n) => sids.has(n.subjectId));
+      drop('stages', (l) => sids.has(l.subjectId));
       drop('cards', (c) => sids.has(c.subjectId));
       drop('reviews', (r) => sids.has(r.subjectId));
       drop('notes', (n) => sids.has(n.subjectId));
@@ -174,6 +178,7 @@
       const drop = (coll, f) => { const ids = state[coll].filter(f).map((x) => x.id); state[coll] = state[coll].filter((x) => !f(x)); if (ids.length) api.remove(coll, ids).catch(fail); };
       dropAttachments((a) => a.subjectId === id);
       drop('nodes', (n) => n.subjectId === id);
+      drop('stages', (l) => l.subjectId === id);
       drop('cards', (c) => c.subjectId === id);
       drop('reviews', (r) => r.subjectId === id);
       drop('notes', (n) => n.subjectId === id);
@@ -192,7 +197,10 @@
         list.forEach((it) => {
           const t = typeof it === 'string' ? { title: it, children: [] } : it;
           if (!t.title || !t.title.trim()) return;
-          const n = { id: U.uid('n_'), subjectId, parentId: pid || null, title: t.title.trim(), done: !!t.done && !(t.children && t.children.length), doneAt: t.done ? Date.now() : null, order: order++, due: null, createdAt: Date.now() };
+          const leaf = !(t.children && t.children.length);
+          // Imports: an explicit stage (0–5) wins; an old-style "done" counts as Learn done (stage 1)
+          const stg = leaf ? Math.max(0, Math.min(5, t.stage != null ? +t.stage || 0 : t.done ? 1 : 0)) : 0;
+          const n = { id: U.uid('n_'), subjectId, parentId: pid || null, title: t.title.trim(), done: stg === 5, doneAt: stg === 5 ? Date.now() : null, stage: stg, stageDue: stg >= 1 && stg < 5 ? U.today() : null, order: order++, due: null, createdAt: Date.now() };
           state.nodes.push(n); created.push(n);
           if (t.children && t.children.length) add(t.children, n.id, true);
         });
@@ -205,15 +213,72 @@
       return created;
     },
     updateNode(id, patch) { const n = sel.node(id); if (!n) return; Object.assign(n, patch); touchSubject(n.subjectId); bump(); api.update('nodes', id, patch).catch(fail); },
-    toggleNode(id) {
-      const n = sel.node(id); if (!n) return;
-      const desc = TI.stats.descendants(state, id);
-      const leaves = desc.length ? desc.filter((d) => !TI.stats.children(state, d.subjectId, d.id).length) : [n];
-      const allDone = leaves.every((l) => l.done);
-      const now = Date.now();
-      const patches = leaves.map((l) => { l.done = !allDone; l.doneAt = allDone ? null : now; return { id: l.id, done: l.done, doneAt: l.doneAt }; });
-      touchSubject(n.subjectId); bump(); api.updateMany('nodes', patches).catch(fail);
-      return !allDone;
+    // ---- Five-stage mastery (see js/core/stages.js) ----
+    // Complete the next stage of a topic. result only for the interview test: 'pass' | 'shaky' | 'fail'
+    completeStage(id, { result = '', early = false } = {}) {
+      const n = sel.node(id); if (!n) return null;
+      const ST = TI.stages; const k = ST.stageOf(n) + 1; if (k > ST.N) return null;
+      const res = k === 4 ? (result || 'pass') : '';
+      const o = ST.outcome(n, k, res);
+      const now = Date.now(); const subj = sel.subject(n.subjectId);
+      const log = { id: U.uid('g_'), nodeId: n.id, subjectId: n.subjectId, projectId: subj ? subj.projectId : null, stage: k, result: res, at: now, early: !!early, toStage: o.stage, prevStage: ST.stageOf(n), prevDue: n.stageDue || null, prevDone: !!n.done, prevDoneAt: n.doneAt || null };
+      const patch = { stage: o.stage, stageDue: o.stageDue, done: o.stage === ST.N, doneAt: o.stage === ST.N ? now : null };
+      Object.assign(n, patch); state.stages.push(log);
+      touchSubject(n.subjectId); bump();
+      api.update('nodes', n.id, patch).catch(fail); api.create('stages', log).catch(fail);
+      return { stage: k, toStage: o.stage, result: res, due: o.stageDue };
+    },
+    // Undo the most recent tick (or test result) of a topic
+    undoStage(id) {
+      const n = sel.node(id); if (!n) return null;
+      const logs = TI.stages.logsOf(state, id); const last = logs[logs.length - 1];
+      if (!last) return null;
+      const patch = { stage: last.prevStage || 0, stageDue: last.prevDue || null, done: !!last.prevDone, doneAt: last.prevDoneAt || null };
+      Object.assign(n, patch); state.stages = state.stages.filter((l) => l.id !== last.id);
+      touchSubject(n.subjectId); bump();
+      api.update('nodes', n.id, patch).catch(fail); api.remove('stages', last.id).catch(fail);
+      return last;
+    },
+    // Mark Learn (stage 1) done for every not-started topic under a unit / chapter
+    learnAll(id) {
+      const n = sel.node(id); if (!n) return 0;
+      const leaves = TI.stats.descendants(state, id).filter((d) => !TI.stats.children(state, d.subjectId, d.id).length && TI.stages.stageOf(d) === 0);
+      if (!leaves.length) return 0;
+      const now = Date.now(); const subj = sel.subject(n.subjectId); const due = U.addDaysKey(U.today(), TI.stages.GAP[0]);
+      const logs = []; const patches = [];
+      leaves.forEach((l, i) => {
+        logs.push({ id: U.uid('g_'), nodeId: l.id, subjectId: l.subjectId, projectId: subj ? subj.projectId : null, stage: 1, result: '', at: now + i, early: false, toStage: 1, prevStage: 0, prevDue: l.stageDue || null, prevDone: !!l.done, prevDoneAt: l.doneAt || null });
+        Object.assign(l, { stage: 1, stageDue: due, done: false, doneAt: null });
+        patches.push({ id: l.id, stage: 1, stageDue: due, done: false, doneAt: null });
+      });
+      state.stages.push(...logs); touchSubject(n.subjectId); bump();
+      api.updateMany('nodes', patches).catch(fail); api.createMany('stages', logs).catch(fail);
+      return leaves.length;
+    },
+    // One-time move from the old single tick: ticked topics become "Learn done" on the day they were ticked.
+    // Their Revision 1 dates are spread so at most SPREAD_PER_DAY fall on one day.
+    migrateStages() {
+      const ST = TI.stages; const kids = new Set(state.nodes.filter((n) => n.parentId).map((n) => n.parentId));
+      const old = state.nodes.filter((n) => n.stage == null && n.done && !kids.has(n.id)).sort((a, b) => (a.doneAt || 0) - (b.doneAt || 0));
+      const fresh = state.nodes.filter((n) => n.stage == null && !(n.done && !kids.has(n.id)));
+      fresh.forEach((n) => { n.stage = 0; n.stageDue = null; if (kids.has(n.id) && n.done) { n.done = false; n.doneAt = null; } });
+      if (!old.length) return 0;
+      const today = U.today(); const perDay = new Map(); const pidOf = new Map(state.subjects.map((s) => [s.id, s.projectId]));
+      const patches = []; const logs = [];
+      old.forEach((n, i) => {
+        const at = n.doneAt || Date.now();
+        let due = U.addDaysKey(U.dayKey(at), ST.GAP[0]); if (due < today) due = today;
+        while ((perDay.get(due) || 0) >= ST.SPREAD_PER_DAY) due = U.addDaysKey(due, 1);
+        perDay.set(due, (perDay.get(due) || 0) + 1);
+        logs.push({ id: U.uid('g_'), nodeId: n.id, subjectId: n.subjectId, projectId: pidOf.get(n.subjectId) || null, stage: 1, result: '', at: at + (i % 1000), early: false, toStage: 1, prevStage: 0, prevDue: null, prevDone: false, prevDoneAt: null, migrated: true });
+        Object.assign(n, { stage: 1, stageDue: due, done: false, doneAt: null });
+        patches.push({ id: n.id, stage: 1, stageDue: due, done: false, doneAt: null });
+      });
+      state.stages.push(...logs); bump();
+      api.updateMany('nodes', patches).catch(fail); api.createMany('stages', logs).catch(fail);
+      const days = perDay.size;
+      setTimeout(() => TI.ui && TI.ui.toast(`${U.plural(old.length, 'ticked topic')} moved to “Learn done”. Revision 1s are spread over ${U.plural(days, 'day')}.`, { icon: 'school', duration: 7000 }), 600);
+      return old.length;
     },
     moveNode(id, dir) {
       const n = sel.node(id); if (!n) return;
@@ -231,7 +296,12 @@
       state.nodes = state.nodes.filter((n) => !set.has(n.id));
       state.sessions.forEach((s) => { if (set.has(s.nodeId)) s.nodeId = null; });
       state.notes.forEach((m) => { if (set.has(m.nodeId)) m.nodeId = null; });
+      const cardFix = state.cards.filter((c) => set.has(c.nodeId)); cardFix.forEach((c) => { c.nodeId = null; });
+      const logIds = state.stages.filter((l) => set.has(l.nodeId)).map((l) => l.id);
+      state.stages = state.stages.filter((l) => !set.has(l.nodeId));
       bump(); api.remove('nodes', ids).catch(fail);
+      if (logIds.length) api.remove('stages', logIds).catch(fail);
+      if (cardFix.length) api.updateMany('cards', cardFix.map((c) => ({ id: c.id, nodeId: null }))).catch(fail);
     },
 
     // ---- Sessions ----
@@ -247,7 +317,7 @@
     // ---- Flashcards ----
     addCards(subjectId, list) {
       const now = Date.now();
-      const cards = list.map((c, i) => ({ id: U.uid('c_'), subjectId, front: c.front.trim(), back: c.back.trim(), createdAt: now + i, ...TI.srs.newCard() }));
+      const cards = list.map((c, i) => ({ id: U.uid('c_'), subjectId, nodeId: c.nodeId || null, front: c.front.trim(), back: c.back.trim(), createdAt: now + i, ...TI.srs.newCard() }));
       state.cards.push(...cards); touchSubject(subjectId); bump(); api.createMany('cards', cards).catch(fail);
       return cards;
     },

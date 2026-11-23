@@ -46,7 +46,7 @@
               <div class="stat-tiles">
                 <div class="stat-tile"><div class="l">Spent Today</div><div class="v">${U.fmtDur(st.subjectDay(state, s.id, today))}</div></div>
                 <div class="stat-tile"><div class="l">Spent Total</div><div class="v">${U.fmtDur(st.subjectTime(state, s.id))}</div></div>
-                <div class="stat-tile"><div class="l">Parts Done</div><div class="v">${st.partsDone(state, s.id)}</div></div>
+                <div class="stat-tile"><div class="l">Mastered</div><div class="v">${st.partsDone(state, s.id)}</div></div>
               </div>
             </div>
             ${TI.timerCard.render({ subjectId: s.id })}
@@ -57,7 +57,7 @@
           </div>
           <div class="subject-col">
             <div class="card">
-              <div class="card-head"><h3>Syllabus</h3><span class="small muted">${st.partsDone(state, s.id)} parts</span>
+              <div class="card-head"><h3>Syllabus</h3><span class="small muted">${st.partsDone(state, s.id)} mastered</span>
                 <div class="actions"><button class="icon-btn sm muted" data-act="expand-all" data-id="${s.id}" title="Expand all" aria-label="Expand all">${U.icon('unfold_more')}</button><button class="icon-btn sm muted" data-act="collapse-all" data-id="${s.id}" title="Collapse all" aria-label="Collapse all">${U.icon('unfold_less')}</button></div></div>
               ${TI.tree.render(s.id, { showPlay: true })}
             </div>

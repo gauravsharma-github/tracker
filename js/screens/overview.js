@@ -33,7 +33,7 @@
       <div class="pj-main">${TI.ui.ring(f.ratio, p.color, { size: 76, stroke: 7, label: `<span style="font-size:14px">${U.pctInt(f.ratio)}</span>` })}
         <div class="grow" style="min-width:0"><div class="pj-name">${U.esc(p.name)}</div><div class="small muted">${f.updated ? `Updated ${U.timeAgo(f.updated).toLowerCase()}` : 'Not started'}</div></div></div>
       <div class="pj-stats">
-        <div><b>${f.prog.done}<span class="faint">/${f.prog.leaves}</span></b><span>Topics done</span></div>
+        <div><b>${f.prog.done}<span class="faint">/${f.prog.leaves}</span></b><span>Mastered</span></div>
         <div><b>${U.fmtDur(f.total, { noDays: true })}</b><span>Total time</span></div>
         <div><b>${U.fmtDur(f.today, { noDays: true })}</b><span>Today</span></div>
       </div>
@@ -74,7 +74,7 @@
           ${TI.ui.kpi('today', 'Today', U.fmtDur(TI.stats.allDay(state, today), { noDays: true }), `Goal ${U.fmtMin(state.settings.dailyGoalMin)}`, '#E0AD3C')}
           ${TI.ui.kpi('date_range', 'Last 7 days', U.fmtDur(week, { noDays: true }), `${U.fmtDur(week / 7, { noDays: true })} a day`, '#25AE97')}
           ${TI.ui.kpi('local_fire_department', 'Streak', U.plural(streak.current, 'day'), `Best ${streak.best}`, '#F06A3A')}
-          ${TI.ui.kpi('task_alt', 'Topics done', `${topics.done}/${topics.all}`, U.pct(topics.all ? topics.done / topics.all : 0, 1), '#405FFF')}
+          ${TI.ui.kpi('military_tech', 'Topics mastered', `${topics.done}/${topics.all}`, 'All 5 stages done', '#405FFF')}
           ${TI.ui.kpi('notifications_active', 'Due now', String(due), 'Cards and topics', '#C74FFA')}
         </div>
         ${TI.heatmap.render('all', { weeks: ctx.desktop ? 53 : 20, title: 'Progress Heatmap · all projects' })}

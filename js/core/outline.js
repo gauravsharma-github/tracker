@@ -25,7 +25,9 @@
       const children = ck ? x[ck].map(toNode).filter(Boolean) : [];
       if (!title && children.length) return { title: 'Untitled', done: false, children };
       if (!title) return null;
-      return { title, done: !!(x.done || x.completed), children };
+      const o = { title, done: !!(x.done || x.completed), children };
+      if (x.stage != null && !Number.isNaN(+x.stage)) { o.stage = Math.max(0, Math.min(5, +x.stage)); o.done = o.stage > 0; }
+      return o;
     };
     if (Array.isArray(v)) return v.map(toNode).filter(Boolean);
     const ck = CHILD_KEYS.find((k) => Array.isArray(v[k]));

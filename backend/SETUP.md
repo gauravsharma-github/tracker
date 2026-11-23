@@ -68,6 +68,8 @@ When the token expires, uploads and downloads say *GitHub rejected the token*: g
 
 Edit `Code.gs`, save, then **Deploy › Manage deployments → ✏️ (edit) → Version: New version → Deploy**. Editing the existing deployment keeps the same `/exec` URL, so your devices stay connected. (A brand-new deployment would give a new URL.)
 
+**Updating to version 3** (adds the `stages` tab and `stage` / `stageDue` / card `nodeId` columns for the five-stage ticks): same four steps as below. Optional – with version 2 the new fields are kept in each tab's `extra` column.
+
 **Updating from version 1 to version 2** (adds the `attachments` tab and the projects' `updatedAt` column used by the Dashboard's "last updated" order):
 
 1. In the sheet: **Extensions › Apps Script**, select all the code in `Code.gs` and replace it with the new `backend/Code.gs`. **Save**.

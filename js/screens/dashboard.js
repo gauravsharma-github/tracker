@@ -121,7 +121,7 @@
       </div>`;
 
       const kpis = `<div class="kpis dash-kpis desktop-only">
-        ${TI.ui.kpi('task_alt', 'Completed', U.pct(ratio, 2), `${st.projectProgress(state, p.id).done} of ${st.projectProgress(state, p.id).leaves} topics`, p.color)}
+        ${TI.ui.kpi('task_alt', 'Completed', U.pct(ratio, 2), `${st.projectProgress(state, p.id).done} of ${st.projectProgress(state, p.id).leaves} topics mastered`, p.color)}
         ${TI.ui.kpi('schedule', 'Time spent', U.fmtDur(total, { noDays: true }), `${streak.activeDays} active days`, '#25AE97')}
         ${TI.ui.kpi('today', 'Today', U.fmtDur(todaySec, { noDays: true }), goal ? `${U.pctInt(Math.min(1, todaySec / goal))} of ${U.fmtMin(state.settings.dailyGoalMin)} goal` : '', '#E0AD3C')}
         ${TI.ui.kpi('local_fire_department', 'Streak', U.plural(streak.current, 'day'), `Best ${streak.best}`, '#F06A3A')}

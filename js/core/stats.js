@@ -19,14 +19,15 @@
     const calc = (n) => {
       const kids = childrenOf.get(key(n.subjectId, n.id)) || [];
       let p;
-      if (!kids.length) p = { leaves: 1, done: n.done ? 1 : 0 };
-      else { p = { leaves: 0, done: 0 }; kids.forEach((c) => { const q = calc(c); p.leaves += q.leaves; p.done += q.done; }); }
+      // leaves: topics · done: topics mastered (all 5 stages) · pts: stages done / 5 (each stage = 20%)
+      if (!kids.length) { const st = TI.stages.stageOf(n); p = { leaves: 1, done: st === TI.stages.N ? 1 : 0, pts: st / TI.stages.N, started: st > 0 ? 1 : 0 }; }
+      else { p = { leaves: 0, done: 0, pts: 0, started: 0 }; kids.forEach((c) => { const q = calc(c); p.leaves += q.leaves; p.done += q.done; p.pts += q.pts; p.started += q.started; }); }
       prog.set(n.id, p); return p;
     };
     const subjProg = new Map();
     state.subjects.forEach((s) => {
-      const p = { leaves: 0, done: 0 };
-      (childrenOf.get(key(s.id, null)) || []).forEach((n) => { const q = calc(n); p.leaves += q.leaves; p.done += q.done; });
+      const p = { leaves: 0, done: 0, pts: 0, started: 0 };
+      (childrenOf.get(key(s.id, null)) || []).forEach((n) => { const q = calc(n); p.leaves += q.leaves; p.done += q.done; p.pts += q.pts; p.started += q.started; });
       subjProg.set(s.id, p);
     });
 
@@ -50,6 +51,7 @@
     state.projects.forEach((p) => { bumpAct(p.id, p.createdAt); bumpAct(p.id, p.updatedAt); });
     state.subjects.forEach((s) => bumpAct(s.projectId, s.createdAt));
     state.nodes.forEach((n) => { viaSubj(n.subjectId, n.createdAt); viaSubj(n.subjectId, n.doneAt); });
+    (state.stages || []).forEach((l) => viaSubj(l.subjectId, l.at));
     state.sessions.forEach((s) => bumpAct(s.projectId, s.start + (s.duration || 0) * 1000));
     state.notes.forEach((m) => viaSubj(m.subjectId, m.updatedAt));
     state.cards.forEach((c) => { viaSubj(c.subjectId, c.createdAt); viaSubj(c.subjectId, c.lastReviewed); });
@@ -65,18 +67,19 @@
     return cache.idx;
   }
 
-  const ratio = (p) => (p && p.leaves ? p.done / p.leaves : 0);
+  // Weighted: each of the 5 stages of a topic counts 20%
+  const ratio = (p) => (p && p.leaves ? (p.pts != null ? p.pts : p.done) / p.leaves : 0);
 
   const stats = {
     idx,
     children(state, subjectId, parentId) { const i = idx(state); return i.childrenOf.get(i.key(subjectId, parentId)) || []; },
-    nodeProgress(state, id) { return idx(state).prog.get(id) || { leaves: 0, done: 0 }; },
+    nodeProgress(state, id) { return idx(state).prog.get(id) || { leaves: 0, done: 0, pts: 0, started: 0 }; },
     nodeRatio(state, id) { return ratio(stats.nodeProgress(state, id)); },
-    subjectProgress(state, sid) { return idx(state).subjProg.get(sid) || { leaves: 0, done: 0 }; },
+    subjectProgress(state, sid) { return idx(state).subjProg.get(sid) || { leaves: 0, done: 0, pts: 0, started: 0 }; },
     subjectRatio(state, sid) { return ratio(stats.subjectProgress(state, sid)); },
     projectProgress(state, pid) {
-      const p = { leaves: 0, done: 0 };
-      state.subjects.filter((s) => s.projectId === pid).forEach((s) => { const q = stats.subjectProgress(state, s.id); p.leaves += q.leaves; p.done += q.done; });
+      const p = { leaves: 0, done: 0, pts: 0, started: 0 };
+      state.subjects.filter((s) => s.projectId === pid).forEach((s) => { const q = stats.subjectProgress(state, s.id); p.leaves += q.leaves; p.done += q.done; p.pts += q.pts; p.started += q.started; });
       return p;
     },
     projectRatio(state, pid) { return ratio(stats.projectProgress(state, pid)); },
@@ -127,24 +130,32 @@
     },
     dueCards(state, sid) { return state.cards.filter((c) => (!sid || c.subjectId === sid) && TI.srs.isDue(c)); },
     reviewedToday(state, sid) { const t0 = U.startOfDay().getTime(); return state.reviews.filter((r) => r.at >= t0 && (!sid || r.subjectId === sid)).length; },
+    // Topics needing attention today: next stage due/overdue, or a due date you set yourself
     dueTopics(state, sid) {
-      const today = U.today();
-      return state.nodes.filter((n) => n.subjectId === sid && n.due && n.due <= today && stats.nodeRatio(state, n.id) < 1);
+      const today = U.today(); const i = idx(state);
+      return state.nodes.filter((n) => n.subjectId === sid && ((n.due && n.due <= today && stats.nodeRatio(state, n.id) < 1)
+        || (!(i.childrenOf.get(i.key(n.subjectId, n.id)) || []).length && TI.stages.isDue(n, today))));
     },
+    // Stage ticks made on a day (for heatmap / insights)
+    stageLogs(state, from = 0) { return (state.stages || []).filter((l) => l.at >= from && l.result !== 'shaky' && l.result !== 'fail'); },
     isSubjectDue(state, sid) { return stats.dueTopics(state, sid).length > 0 || stats.dueCards(state, sid).length > 0; },
     // Time per subject for a set of sessions
     bySubject(state, sessions) {
       const m = new Map(); sessions.forEach((s) => m.set(s.subjectId, (m.get(s.subjectId) || 0) + s.duration));
       return [...m.entries()].map(([sid, sec]) => ({ subject: state.subjects.find((x) => x.id === sid), sec })).filter((x) => x.subject).sort((a, b) => b.sec - a.sec);
     },
-    // Topics completed per day (cumulative) for the progress timeline
+    // Weighted progress (stages / 5 per topic) at the end of each day, for the progress timeline
     completionSeries(state, pid, days) {
       const sids = new Set(state.subjects.filter((s) => s.projectId === pid).map((s) => s.id));
       const leaves = state.nodes.filter((n) => sids.has(n.subjectId) && !(stats.children(state, n.subjectId, n.id).length));
-      const total = leaves.length || 1;
+      const total = leaves.length || 1; const ids = new Set(leaves.map((n) => n.id));
+      const byNode = new Map();
+      (state.stages || []).forEach((l) => { if (!ids.has(l.nodeId)) return; if (!byNode.has(l.nodeId)) byNode.set(l.nodeId, []); byNode.get(l.nodeId).push(l); });
+      byNode.forEach((a) => a.sort((x, y) => x.at - y.at));
       return days.map((d) => {
-        const end = U.endOfDay(U.parseDay(d)).getTime();
-        return leaves.filter((n) => n.done && (n.doneAt || 0) <= end).length / total;
+        const end = U.endOfDay(U.parseDay(d)).getTime(); let pts = 0;
+        byNode.forEach((a) => { let st = 0; for (const l of a) { if (l.at > end) break; st = l.toStage; } pts += st; });
+        return pts / TI.stages.N / total;
       });
     },
   };
