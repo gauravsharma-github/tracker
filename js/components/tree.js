@@ -76,6 +76,8 @@
         { icon: 'timeline', label: 'Stage history', onClick: () => historySheet(n) },
         ...(TI.stages.logsOf(state, n.id).length ? [{ icon: 'undo', label: `Undo last stage`, onClick: () => undo(n.id) }] : []),
         { icon: 'style', label: `Interview cards (${topicCards(n).length})`, onClick: () => TI.screens.cards.addSheet(n.subjectId, 'single', null, n.id) },
+        { icon: 'auto_awesome', label: 'Generate interview questions (AI)', onClick: () => TI.aiui.questionsSheet(n.id) },
+        { icon: 'record_voice_over', label: 'Mock interview (AI)', onClick: () => TI.aiui.mockInterview(n.id) },
       ]),
       { icon: 'event', label: n.due ? `Due ${U.fmtDay(n.due)} – change` : 'Set due date', onClick: () => dueDialog(n) },
       { icon: 'sticky_note_2', label: 'Add note', onClick: () => TI.screens.notes.edit(null, { subjectId: n.subjectId, nodeId: n.id, title: n.title }) },
@@ -128,6 +130,8 @@
     else if (r.result === 'fail') msg = `Back to Revision 2 · due tomorrow`;
     else msg = `${ST.NAMES[r.stage - 1]} done · ${nextLine(r)}`;
     TI.ui.toast(msg, { icon: r.toStage >= ST.N ? 'military_tech' : 'check_circle', duration: 4500, action: { label: 'Undo', fn: () => undo(n.id) } });
+    // Revision 2 done → the interview test is next: prepare its questions in the background
+    if (r.toStage === 3 && !r.result) TI.ai.autoFill(n.id);
     if (r.toStage >= ST.N && s && TI.stats.subjectProgress(state, s.id).done === TI.stats.subjectProgress(state, s.id).leaves) setTimeout(() => TI.ui.toast(`🎉 ${s.name}: every topic mastered!`, { icon: 'celebration', duration: 4500 }), 900);
   }
 
@@ -167,10 +171,15 @@
     TI.ui.openSheet({
       title: `Interview test · ${n.title}`,
       html: `${early ? `<div class="cx-err" style="margin-bottom:12px">${U.icon('warning')}<span>The interview test is due ${U.esc(ST.when(n.stageDue))}. Testing early gives you less time to forget, so it tells you less.</span></div>` : ''}
-        <p class="muted" style="margin-top:0">${cards.length ? `Answer this topic's ${U.plural(cards.length, 'interview card')} out loud, then record how it went.` : 'This topic has no interview cards yet. Add some questions, or record the result of a test you did elsewhere.'}</p>
-        <div class="row" style="gap:8px;flex-wrap:wrap">
-          ${cards.length ? `<button class="btn primary" data-act="start">${U.icon('style')}Start test (${cards.length})</button>` : ''}
-          <button class="btn" data-act="cards">${U.icon('add')}${cards.length ? 'Add more cards' : 'Add interview cards'}</button>
+        <p class="muted" style="margin-top:0">Test yourself one of these ways, or record the result of a test you did elsewhere.</p>
+        <div class="test-ways">
+          <button class="test-way ai" data-act="mock">${U.icon('record_voice_over')}<b>Mock interview with AI</b><span>Asks questions and follow-ups, scores you and suggests the result</span></button>
+          ${cards.length ? `<button class="test-way" data-act="start">${U.icon('style')}<b>Flashcard test</b><span>Answer the topic's ${U.plural(cards.length, 'card')} out loud and check yourself</span></button>`
+            : `<button class="test-way" data-act="gen">${U.icon('auto_awesome')}<b>Generate questions with AI</b><span>Creates this topic's interview cards with model answers</span></button>`}
+        </div>
+        <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:8px">
+          ${cards.length ? `<button class="btn sm ghost" data-act="gen">${U.icon('auto_awesome')}More questions with AI</button>` : ''}
+          <button class="btn sm ghost" data-act="cards">${U.icon('add')}${cards.length ? 'Add cards yourself' : 'Write cards yourself'}</button>
         </div>
         <div class="small muted" style="margin:18px 0 8px">Record the result</div>
         <div class="test-res">
@@ -183,6 +192,8 @@
         TI.forms.onAct(a, {
           start() { a.close(); TI.router.go(`/study/${n.subjectId}?topic=${n.id}&test=1`); },
           cards() { a.close(); TI.screens.cards.addSheet(n.subjectId, 'single', null, n.id); },
+          mock() { a.close(); TI.aiui.mockInterview(n.id); },
+          gen() { a.close(); TI.aiui.questionsSheet(n.id, { then: () => testSheet(sel.node(n.id)) }); },
           res(el) { a.close(); recordTest(n.id, el.dataset.r, early); },
         });
       },

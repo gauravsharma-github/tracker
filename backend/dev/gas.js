@@ -58,12 +58,14 @@ function makeEnv(state) {
   const ctx = {
     console, JSON, Date, Math, Object, Array, String, Number, isNaN,
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, getUi: () => { throw new Error('No UI in this context'); } },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => state.props[k] || null, setProperty: (k, v) => { state.props[k] = v; } }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => state.props[k] || null, setProperty: (k, v) => { state.props[k] = v; }, deleteProperty: (k) => { delete state.props[k]; } }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock: () => true, releaseLock: () => {} }) },
     ContentService: { MimeType: { JSON: 'application/json' }, createTextOutput: (s) => { const o = { content: s, mime: 'text/plain', setMimeType(m) { o.mime = m; return o; }, getContent: () => s }; return o; } },
     Utilities: { getUuid: () => require('crypto').randomUUID(), formatDate: (d, tz, f) => f === 'HH:mm' ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` },
     Logger: { log: (...a) => console.log('[Logger]', ...a) },
     ScriptApp: { getService: () => ({ getUrl: () => 'http://localhost/exec' }) },
+    // No network from here: AI calls get a canned answer so the dev server works offline
+    UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"questions":[{"q":"Sample question?","a":"Sample answer."}],"say":"Sample interviewer question?","kind":"question","main":1,"score":70,"verdict":"shaky","summary":"Sample report.","strengths":[],"gaps":[],"questions_scored":[],"studyNext":[]}' }] } }] }) }) },
   };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(process.env.CODE_GS || require('path').join(__dirname, '..', 'Code.gs'), 'utf8'), ctx);

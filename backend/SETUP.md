@@ -49,6 +49,15 @@ You need: a Google account, and TrackIt open in a browser (your GitHub Pages URL
 
 Treat the connection code like a password. If you set up attachments (below) on the first device, the code also carries those GitHub settings, so the phone can open your PDFs and recordings right away.
 
+## 7. AI with Google Gemini (optional, free)
+
+1. Get a key: [aistudio.google.com/apikey](https://aistudio.google.com/apikey) › **Create API key**.
+2. Make sure your script is version 4 (see *Updating the script later*), including **Deploy › Manage deployments › ✏️ › New version**.
+3. Reload the sheet. **TrackIt › Set Gemini API key**, paste the key, **OK**. Google asks you to allow the script to "connect to an external service" the first time – allow it. A test message should say *Working ✓*.
+4. In TrackIt: **Settings › AI › Check** should say *AI ready*.
+
+The key lives only in the script's properties. To remove it, run **Set Gemini API key** again with an empty box. To use another model: **TrackIt › Choose AI model**.
+
 ## 6. Attachments: PDFs and audio in a private GitHub repo (optional)
 
 The sheet stores the file details (name, path, size); the files themselves go into a GitHub repository you own. Private repositories are free.
@@ -67,6 +76,8 @@ When the token expires, uploads and downloads say *GitHub rejected the token*: g
 ## Updating the script later
 
 Edit `Code.gs`, save, then **Deploy › Manage deployments → ✏️ (edit) → Version: New version → Deploy**. Editing the existing deployment keeps the same `/exec` URL, so your devices stay connected. (A brand-new deployment would give a new URL.)
+
+**Updating to version 4** (adds the AI proxy used by interview questions and mock interviews, plus a TrackIt › Set Gemini API key menu): same four steps as below, then section 7. Version 4 includes everything in version 3.
 
 **Updating to version 3** (adds the `stages` tab and `stage` / `stageDue` / card `nodeId` columns for the five-stage ticks): same four steps as below. Optional – with version 2 the new fields are kept in each tab's `extra` column.
 
@@ -97,6 +108,9 @@ Times are stored as milliseconds since 1970 (UTC). `=EPOCHTODATE(E2, 2)` turns o
 | *The sheet is busy* | Two devices synced at the same moment; it retries automatically. |
 | Sidebar says "N waiting" | Changes are safe in the browser and will sync when the script is reachable. Use **Settings › Sync now** to retry. |
 | *Update your Google Sheet script* (when attaching) | Follow **Updating from version 1 to version 2** above. |
+| *Your sheet script is too old for AI* | Update to version 4 and deploy a new version. |
+| *AI is not set up yet* | TrackIt › Set Gemini API key in the sheet (section 7). |
+| *The free Gemini limit is used up* | Wait a minute (per-minute limit) or until the next day (daily limit). |
 | *GitHub rejected the token* | The token is wrong or expired. Make a new one (step 6) and paste it in **Settings › Attachments**. |
 | *Repository not found* | Check the username and repository name, and that the token was given access to that repository. |
 | *The token is not allowed to do this* | Edit the token on GitHub: **Contents › Read and write** for that repository. |

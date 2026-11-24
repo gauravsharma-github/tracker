@@ -66,7 +66,21 @@ While connected to your own sheet, every Pro feature is unlocked.
 
 `backend/dev/server.js` runs `Code.gs` locally in Node against an in-memory fake spreadsheet, so you can try and change the backend without deploying anything.
 
-**Already using the sheet? Update to the latest script (version 3)** (v2 added attachments and the Dashboard's "last updated" order; v3 adds tidy columns for the five-stage ticks – the app also works with v2, the extra fields then sit in the `extra` column): open your sheet › **Extensions › Apps Script**, replace everything with the new `backend/Code.gs`, **Save**, run **setup** once, then **Deploy › Manage deployments › ✏️ › Version: New version › Deploy**. The URL and key stay the same. In TrackIt press **Settings › Sync now**. Details: [`backend/SETUP.md`](backend/SETUP.md#updating-the-script-later).
+**Already using the sheet? Update to the latest script (version 4 – needed for AI)** (v2 added attachments and the Dashboard's "last updated" order; v3 adds tidy columns for the five-stage ticks – the app also works with v2, the extra fields then sit in the `extra` column): open your sheet › **Extensions › Apps Script**, replace everything with the new `backend/Code.gs`, **Save**, run **setup** once, then **Deploy › Manage deployments › ✏️ › Version: New version › Deploy**. The URL and key stay the same. In TrackIt press **Settings › Sync now**. Details: [`backend/SETUP.md`](backend/SETUP.md#updating-the-script-later).
+
+## AI: interview questions and mock interviews (Google Gemini, free tier)
+
+AI runs **through your Google Sheet's script**: TrackIt sends the prompt to your script, the script adds your Gemini API key (kept in Script Properties, never in the browser or in connection codes) and calls Gemini. It needs the Google Sheet backend and script **version 4**.
+
+**Set up (5 minutes):** get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → update `Code.gs` to version 4 and deploy a new version (see below) → reload the sheet, then **TrackIt › Set Gemini API key** and paste it (it runs a test) → in TrackIt, **Settings › AI** should say *AI ready*. Optional: **TrackIt › Choose AI model** (default `gemini-flash-latest`).
+
+**1. Interview questions (stage 4 filled automatically).** When you tick a topic's Revision 2, TrackIt writes its interview questions in the background – with model answers, at your level, using the topic's PDF notes if it has any – and saves them as the topic's interview cards. You can also generate them any time: topic **⋮ › Generate interview questions (AI)**, or from the Interview test window. Review, untick what you don't want, save.
+
+**2. Mock interviewer.** Topic **⋮ › Mock interview (AI)**, or **Mock interview with AI** in the Interview test window. Choose 3, 5 or 8 questions; the interviewer asks one at a time (drawing on the topic's interview cards), asks a follow-up when an answer is thin, and you answer by typing or with the microphone (Chrome / Edge). Optional: the interviewer reads questions aloud. Then you get a report: score out of 100, Pass / Shaky / Fail verdict, strengths, gaps, what to revise, and per-question feedback with an ideal answer. One click records the verdict on the topic's Interview test tick (you can pick a different result), the report is saved to the topic's notes, and weak questions can be added as cards.
+
+**Settings › AI:** status, *About you* (helps pitch the level), question level (Moderate / Senior / Architect), questions per topic, automatic questions on/off, interviewer voice.
+
+**Limits and privacy:** Gemini's free tier has per-minute and per-day limits; if you hit one, TrackIt says so – wait a minute or until the next day. On the free tier Google may use prompts to improve its products, so don't send confidential client material.
 
 ## Attachments (PDF notes and audio)
 

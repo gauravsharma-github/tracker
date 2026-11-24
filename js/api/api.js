@@ -89,6 +89,8 @@
     },
     // Apps Script version of the connected sheet (attachments need v2)
     backendVersion: () => (api.mode() === 'sheets' ? sheets().version() : 99),
+    ai: (req) => { if (api.mode() !== 'sheets') { const e = new Error('Connect your Google Sheet to use AI (Settings › Google Sheet backend).'); e.code = 'no_sheet'; return Promise.reject(e); } return sheets().ai(req); },
+    aiStatus: () => (api.mode() === 'sheets' ? sheets().aiStatus() : Promise.resolve({ ok: true, configured: false, noSheet: true })),
     syncNow: () => (api.mode() === 'sheets' ? sheets().refresh() : Promise.resolve()),
     syncStatus: () => (api.mode() === 'sheets' ? sheets().status() : null),
     onSyncStatus: (fn) => sheets().onStatus(fn),

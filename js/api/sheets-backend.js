@@ -62,10 +62,11 @@
       try { j = JSON.parse(text); } catch (e) {
         throw new Error(/<html|<!doctype/i.test(text) ? 'That URL did not return TrackIt data. Use the web app URL ending in /exec and set access to "Anyone".' : 'Unexpected response from the script');
       }
-      if (!j.ok) throw new Error(j.error || 'The script reported an error');
+      if (!j.ok) { const err = new Error(j.error || 'The script reported an error'); err.code = j.code; err.status = j.status; throw err; }
       return j;
     } catch (e) {
       if (e.name === 'AbortError') throw new Error('The request timed out');
+      if (e.code) throw e; // the script's own error (with a code, e.g. AI rate limit) – keep it
       throw new Error(friendly(e));
     } finally { clearTimeout(t); }
   }
@@ -172,6 +173,9 @@
     onRemote(fn) { remoteFn = fn; },
     sheetUrl: () => meta.sheetUrl || (conn() && conn().sheetUrl) || null,
     version: () => meta.version || 1,
+    // AI (Gemini) through the sheet's script – the API key stays in Script Properties
+    ai: (req, timeoutMs = 120000) => call({ op: 'ai', ...req }, conn(), timeoutMs),
+    aiStatus: () => call({ op: 'aiStatus' }, conn(), 30000),
     pending: () => queue.length,
     reset() { db = null; queue = []; saveQueue(); S.remove(K.cache); Object.assign(meta, { lastSync: null, lastPull: null, sheetUrl: null }); saveMeta(); setStatus({ state: 'idle', error: null, lastSync: null }); },
   };

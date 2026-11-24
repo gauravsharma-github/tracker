@@ -44,6 +44,7 @@
     if (k === 'alarm') { actions.updateSettings({ alarm: el.value }); TI.sound.alarm(el.value, state.settings.alarmVolume); return; }
     if (k === 'alarmVolume' || k === 'ambientVolume') { actions.updateSettings({ [k]: +el.value }); if (k === 'ambientVolume') TI.sound.setAmbientVolume(+el.value); return; }
     if (k === 'reminderTime') { actions.updateSettings({ reminderTime: el.value }); return; }
+    if (k === 'aiProfile') { actions.updateSettings({ aiProfile: el.value.trim() }); TI.ui.toast('Saved', { icon: 'check' }); return; }
     if (k === 'ambient') {
       const a = TI.config.ambientSounds.find((x) => x.id === el.value);
       if (a && a.pro && !sel.isPro()) { el.value = state.settings.ambient; TI.screens.pro.open('sounds'); return; }
@@ -69,6 +70,23 @@
   let focused = false;
   TI.router.onChange(() => { focused = false; });
 
+  let aiForce = false;
+  function aiStatusHtml(st) {
+    if (st.configured) return `${U.icon('check_circle', 'fill')}<div class="txt"><div class="ttl">AI ready <span class="chip-mini">Gemini</span></div><div class="sub">Model ${U.esc(st.model || '')} · runs through your sheet, so the key never leaves it</div></div><button class="btn sm ghost" data-act="ai-check">Check</button>`;
+    return `${U.icon('auto_awesome')}<div class="txt"><div class="ttl">Set up AI (free)</div><div class="sub">${U.esc(TI.aiui.setupHelp(st))}${st.error && !st.oldScript ? ` (${U.esc(st.error)})` : ''}</div></div><button class="btn sm" data-act="ai-check">Check again</button>`;
+  }
+  function aiRows() {
+    const st = state.settings; const c = TI.ai.cfg();
+    return `<div class="set-row" id="ai-status">${U.icon('hourglass_top')}<div class="txt"><div class="ttl">AI (Google Gemini)</div><div class="sub">Checking…</div></div></div>
+      <div class="set-row">${U.icon('badge')}<div class="txt"><div class="ttl">About you</div><div class="sub">Helps the AI pitch questions and judge answers at the right level</div>
+        <textarea class="textarea" rows="2" data-change="aiProfile" style="margin-top:8px" placeholder="e.g. Solutions architect, 13 years in CRM (Salesforce, Pega). Preparing for senior roles at product companies.">${U.esc(st.aiProfile || '')}</textarea></div></div>
+      <div class="set-row">${U.icon('signal_cellular_alt')}<div class="txt"><div class="ttl">Question level</div></div>${TI.ui.seg(Object.keys(TI.ai.LEVEL_NAMES).map((k) => ({ id: k, label: TI.ai.LEVEL_NAMES[k] })), c.level, 'ai-level', 'alt')}</div>
+      <div class="set-row">${U.icon('format_list_numbered')}<div class="txt"><div class="ttl">Questions per topic</div></div>${TI.ui.seg([5, 8, 10, 15].map((k) => ({ id: String(k), label: String(k) })), String(c.count), 'ai-count', 'alt')}</div>
+      <div class="set-row">${U.icon('auto_awesome')}<div class="txt"><div class="ttl">Prepare interview questions automatically</div><div class="sub">When you tick Revision 2, the topic's interview cards are written in the background (using its PDF notes if any)</div></div>${toggle('aiAuto', st.aiAuto !== false)}</div>
+      <div class="set-row">${U.icon('volume_up')}<div class="txt"><div class="ttl">Interviewer speaks out loud</div><div class="sub">Uses your browser's voice in mock interviews</div></div>${toggle('aiVoice')}</div>
+      <div class="set-row">${U.icon('info')}<div class="txt"><div class="sub">On Gemini's free tier Google may use prompts to improve its products, so avoid putting confidential client details in notes you send to the AI.</div></div></div>`;
+  }
+
   function githubRows() {
     const GH = TI.github; const A = TI.attach;
     const files = state.attachments; const total = files.reduce((n, a) => n + (a.size || 0), 0);
@@ -90,9 +108,12 @@
   const screen = {
     title: 'Settings',
     mount(root, ctx) {
-      if (ctx.query.focus === 'github' && !focused) {
+      // AI status is fetched from the sheet script
+      const ai = root.querySelector('#ai-status');
+      if (ai) TI.ai.status(aiForce).then((st) => { aiForce = false; if (ai.isConnected) ai.innerHTML = aiStatusHtml(st); });
+      if ((ctx.query.focus === 'github' || ctx.query.focus === 'ai') && !focused) {
         focused = true;
-        const el = root.querySelector('#set-gh');
+        const el = root.querySelector(ctx.query.focus === 'ai' ? '#set-ai' : '#set-gh');
         if (el) { setTimeout(() => { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); }, 60); }
       }
     },
@@ -108,6 +129,8 @@
             </div>`}
             <div class="set-group-title">Sync &amp; backup</div>
             <div class="set-group">${sheetsRows()}</div>
+            <div class="set-group-title">AI</div>
+            <div class="set-group" id="set-ai">${aiRows()}</div>
             <div class="set-group-title">Attachments (GitHub)</div>
             <div class="set-group" id="set-gh">${githubRows()}</div>
             <div class="set-group-title">Appearance</div>
@@ -177,6 +200,9 @@
       'sheet-link': () => TI.sync.copySetupLink(),
       'sheet-disconnect': () => TI.sync.disconnect(),
       'gh-setup': () => TI.attach.setupGithub(),
+      'ai-check': () => { aiForce = true; TI.store.bump(); },
+      'ai-level': (el) => actions.updateSettings({ aiLevel: el.dataset.v }),
+      'ai-count': (el) => actions.updateSettings({ aiCount: +el.dataset.v }),
       'gh-disconnect': () => TI.attach.disconnectGithub(),
       'gh-open': () => { const c = TI.github.cfg(); if (c) window.open(`https://github.com/${c.owner}/${c.repo}`, '_blank', 'noopener'); },
       backup: async () => { busy = 'backup'; TI.store.bump(); await actions.backupNow(); busy = ''; TI.store.bump(); TI.ui.toast('Backed up', { icon: 'cloud_done' }); },

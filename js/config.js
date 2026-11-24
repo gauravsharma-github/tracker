@@ -5,7 +5,7 @@ window.TI = window.TI || {};
   TI.config = {
     appName: 'TrackIt',
     tagline: 'Study Tracker & Timer',
-    version: '1.1.0 (web UI)',
+    version: '1.3.0 (web UI)',
     storagePrefix: 'trackit.v1.',
     links: { privacy: '', terms: '', support: '' },
 

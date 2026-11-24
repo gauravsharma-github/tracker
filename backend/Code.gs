@@ -18,7 +18,7 @@
  * "@OnlyCurrentDoc" limits the script to this one spreadsheet.
  */
 
-var BACKEND_VERSION = 3;
+var BACKEND_VERSION = 4;
 
 // Column types: s = text, n = number, t = timestamp (ms), b = true/false, j = JSON text
 var SCHEMA = {
@@ -52,6 +52,10 @@ function doPost(e) {
   var token = PropertiesService.getScriptProperties().getProperty('TOKEN');
   if (!token) return out_({ ok: false, error: 'The sheet is not set up yet. In Apps Script, run setup() once.' });
   if (!req || req.token !== token) return out_({ ok: false, error: 'Wrong secret key' });
+
+  // AI calls don't touch the sheet, so they run without the lock (they can take 10–60 s)
+  if (req.op === 'aiStatus') return out_(aiStatus_());
+  if (req.op === 'ai') { try { return out_(aiCall_(req)); } catch (err) { return out_({ ok: false, code: 'ai_error', error: String((err && err.message) || err) }); } }
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(25000)) return out_({ ok: false, error: 'The sheet is busy. Please try again.' });
@@ -98,7 +102,76 @@ function onOpen() {
     .addItem('Set up / repair tabs', 'setup')
     .addSeparator()
     .addItem('Create a new secret key', 'rotateKey')
+    .addSeparator()
+    .addItem('Set Gemini API key (AI features)', 'setGeminiKey')
+    .addItem('Choose AI model', 'chooseAiModel')
+    .addItem('Test AI', 'testAi')
     .addToUi();
+}
+
+// ---------------------------------------------------------------- AI (Google Gemini)
+// TrackIt sends prompts here; this script adds your Gemini API key (kept in Script Properties, never sent to the
+// browser) and calls the Gemini API. Get a key at https://aistudio.google.com/apikey
+var AI_DEFAULT_MODEL = 'gemini-flash-latest';
+
+function aiCfg_() {
+  var p = PropertiesService.getScriptProperties();
+  return { key: p.getProperty('GEMINI_API_KEY') || '', model: p.getProperty('GEMINI_MODEL') || AI_DEFAULT_MODEL };
+}
+
+function aiStatus_() {
+  var c = aiCfg_();
+  return { ok: true, configured: !!c.key, model: c.model, provider: 'gemini', version: BACKEND_VERSION };
+}
+
+/** req: { system, contents: [{ role: 'user'|'model', parts: [{ text } | { inline_data: { mime_type, data } }] }], json, temperature, maxTokens } */
+function aiCall_(req) {
+  var c = aiCfg_();
+  if (!c.key) return { ok: false, code: 'no_key', error: 'No Gemini API key yet. In your sheet open TrackIt › Set Gemini API key.' };
+  var gen = { temperature: req.temperature == null ? 0.7 : Number(req.temperature), maxOutputTokens: Number(req.maxTokens) || 8192 };
+  if (req.json) gen.responseMimeType = 'application/json';
+  var body = { contents: req.contents || [], generationConfig: gen };
+  if (req.system) body.systemInstruction = { parts: [{ text: String(req.system) }] };
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(req.model || c.model) + ':generateContent';
+  var res = UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': c.key }, payload: JSON.stringify(body), muteHttpExceptions: true });
+  var status = res.getResponseCode(); var txt = res.getContentText(); var j = null;
+  try { j = JSON.parse(txt); } catch (e) { j = null; }
+  if (status !== 200) {
+    var msg = (j && j.error && j.error.message) || ('HTTP ' + status);
+    var code = status === 429 ? 'rate_limit' : (status === 400 && /api key/i.test(msg)) || status === 401 || status === 403 ? 'bad_key' : status === 404 ? 'bad_model' : 'ai_error';
+    return { ok: false, code: code, status: status, error: msg };
+  }
+  var cand = j && j.candidates && j.candidates[0];
+  var text = cand && cand.content && cand.content.parts ? cand.content.parts.map(function (p) { return p.thought ? '' : (p.text || ''); }).join('') : '';
+  if (!text) return { ok: false, code: 'empty', error: 'The AI returned no answer' + (cand && cand.finishReason ? ' (' + cand.finishReason + ')' : '') + '. Try again.' };
+  return { ok: true, text: text, model: req.model || c.model, finishReason: cand.finishReason || '', usage: j.usageMetadata || null };
+}
+
+function setGeminiKey() {
+  var ui = SpreadsheetApp.getUi();
+  var r = ui.prompt('Gemini API key', 'Paste your key from https://aistudio.google.com/apikey\n(It is stored in this script only. Leave empty and press OK to remove it.)', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  var key = String(r.getResponseText() || '').trim();
+  var p = PropertiesService.getScriptProperties();
+  if (!key) { p.deleteProperty('GEMINI_API_KEY'); ui.alert('AI key removed.'); return; }
+  p.setProperty('GEMINI_API_KEY', key);
+  testAi();
+}
+
+function chooseAiModel() {
+  var ui = SpreadsheetApp.getUi(); var c = aiCfg_();
+  var r = ui.prompt('AI model', 'Current: ' + c.model + '\n\nType a Gemini model id (for example gemini-flash-latest), or leave empty for the default (' + AI_DEFAULT_MODEL + ').', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  var m = String(r.getResponseText() || '').trim();
+  if (m) PropertiesService.getScriptProperties().setProperty('GEMINI_MODEL', m); else PropertiesService.getScriptProperties().deleteProperty('GEMINI_MODEL');
+  testAi();
+}
+
+function testAi() {
+  var r = aiCall_({ contents: [{ role: 'user', parts: [{ text: 'Reply with exactly: TrackIt AI is ready' }] }], temperature: 0, maxTokens: 256 });
+  var msg = r.ok ? 'Working ✓  (' + r.model + ')\n\n' + r.text : 'Not working: ' + r.error;
+  try { SpreadsheetApp.getUi().alert('TrackIt AI', msg + (r.ok ? '\n\nNow deploy a new version (Deploy › Manage deployments › ✏️ › New version) if you have not yet.' : ''), SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) { Logger.log(msg); }
+  return r;
 }
 
 function showConnection() {
