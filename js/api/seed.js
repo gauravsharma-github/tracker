@@ -233,7 +233,7 @@
     const r = U.rng(20241207);
     const pick = (arr) => arr[Math.floor(r() * arr.length)];
     const now = Date.now();
-    const db = { projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [], stages: [], settings: defaultSettings(), account: { signedIn: false, name: '', email: '', pro: false, plan: null, lastBackup: null } };
+    const db = { projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [], stages: [], mcqs: [], quizzes: [], sources: [], settings: defaultSettings(), account: { signedIn: false, name: '', email: '', pro: false, plan: null, lastBackup: null } };
     const leavesBySubject = {};
     const subjectByKey = {};
 
@@ -312,6 +312,18 @@
         });
       });
     });
+    // Demo study sources for the first project
+    if (db.projects[0]) [['SSC CGL syllabus and notices', 'https://ssc.gov.in', 'Official site'], ['Quantitative aptitude playlist', 'https://www.youtube.com/results?search_query=ssc+cgl+quantitative+aptitude', ''], ['Previous year papers', 'https://docs.google.com/document/d/example', 'My compiled PDF']]
+      .forEach(([name, url, note], i) => db.sources.push({ id: U.uid('r_'), projectId: db.projects[0].id, name, url, note, order: i + 1, createdAt: now + i, updatedAt: now + i }));
+    // Demo quiz questions (Learn / Revision quizzes) for one SSC topic
+    const div = Object.values(leavesBySubject).flat().find((n) => /divisib/i.test(n.title));
+    if (div) {
+      const D = [['Which number is divisible by 3?', ['124', '123', '125', '128'], 1, 'Digit sum 1+2+3 = 6 is divisible by 3.'], ['Which number is divisible by 4?', ['1022', '1026', '1024', '1030'], 2, 'Last two digits 24 are divisible by 4.'], ['A number is divisible by 9 when…', ['it ends in 9', 'its digit sum is divisible by 9', 'it is odd', 'its last two digits are divisible by 9'], 1, ''],
+        ['Which number is divisible by 11?', ['1331', '1221', '1234', 'Both 1331 and 1221'], 3, 'Alternating digit sums differ by 0 for both.'], ['Divisible by 6 means divisible by…', ['2 and 3', '3 and 4', '2 and 4', '6 only'], 0, ''], ['Is 7 × 13 × 11 = 1001 divisible by 7?', ['Yes', 'No'], 0, ''],
+        ['Which is divisible by 8?', ['1012', '1016', '1018', '1020'], 1, 'Last three digits 016 = 16, divisible by 8.'], ['Divisible by 5 when the last digit is…', ['0 or 5', 'any even digit', '5 only', 'odd'], 0, ''], ['Which number is divisible by 12?', ['132', '134', '138', '142'], 0, 'Divisible by both 3 and 4.'],
+        ['The smallest digit to put in 34_2 to make it divisible by 3?', ['0', '1', '2', '3'], 0, '3+4+0+2 = 9.'], ['Divisibility rule of 25 checks…', ['the last two digits', 'the digit sum', 'the last digit', 'alternating sums'], 0, ''], ['Is 2,345,670 divisible by 10?', ['Yes', 'No'], 0, 'It ends in 0.']];
+      D.forEach(([q, options, correct, why], i) => db.mcqs.push({ id: U.uid('q_'), nodeId: div.id, subjectId: div.subjectId, q, options, correct, why, createdAt: now + i, updatedAt: now + i }));
+    }
     // Link a few cards to a topic waiting for its interview test, so the demo has a test to take
     Object.keys(leavesBySubject).forEach((sid) => {
       const atTest = leavesBySubject[sid].find((n) => n.stage === 3);

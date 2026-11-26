@@ -12,7 +12,7 @@
 
   function newSession(nodeId) {
     const c = TI.ai.cfg();
-    sess = { nodeId, msgs: [], main: 0, len: c.interviewLen, phase: 'intro', report: null, err: '', draft: '', listening: false, recorded: false, added: false };
+    sess = { nodeId, msgs: [], main: 0, len: c.interviewLen, phase: 'intro', report: null, err: '', draft: '', listening: false, recorded: false, added: false, via: '' };
   }
 
   function speak(text) {
@@ -72,7 +72,7 @@
     return `<div class="iv-report">
       <div class="iv-score" style="--v:${V[r.verdict][2]}">
         ${TI.ui.ring(r.score / 100, V[r.verdict][2], { size: 96, stroke: 8, label: String(r.score) })}
-        <div><div class="iv-verdict">${U.icon(V[r.verdict][1])}${V[r.verdict][0]}</div><p>${U.esc(r.summary)}</p><div class="tiny faint">${U.icon('sticky_note_2', 'xs')} Report saved to this topic's notes</div></div>
+        <div><div class="iv-verdict">${U.icon(V[r.verdict][1])}${V[r.verdict][0]}</div><p>${U.esc(r.summary)}</p><div class="tiny faint">${U.icon('sticky_note_2', 'xs')} Report saved to this topic's notes${sess.via ? ` · interview done in ${sess.via}` : ''}</div></div>
       </div>
       ${sess.recorded ? `<div class="cx-ok" style="margin:14px 0">${U.icon('check_circle')}<div><b>Recorded.</b> <span class="muted">${U.esc(sess.recorded)}</span></div></div>`
         : atTest ? `<div class="small muted" style="margin:16px 0 8px">Record the interview test result</div><div class="test-res">${opt('pass', `Re-practice in ${ST.GAP[3]} days`)}${opt('shaky', `Test again in ${ST.SHAKY_DAYS} days`)}${opt('fail', 'Back to Revision 2')}</div>`
@@ -98,11 +98,12 @@
       const n = sel.node(ctx.params[0]);
       if (!n) return `<div class="iv"><div class="iv-bar"><button class="icon-btn" data-act="iv-close" aria-label="Close">${U.icon('close')}</button><b>Mock interview</b></div>${TI.ui.empty('search_off', 'Topic not found', 'It may have been deleted, or this device has not synced yet.')}</div>`;
       if (!sess || sess.nodeId !== n.id) newSession(n.id);
+      if (ctx.query.claude && sess.phase === 'intro' && !sess.claudeAsked) { sess.claudeAsked = true; sess.phase = 'claude'; }
       const s = sel.subject(n.subjectId); const c = TI.ai.cfg();
       const path = TI.stats.pathOf(state, n.id).map((x) => x.title).join(' › ');
       const cards = TI.ai.topicCards(n).length;
       const busy = sess.phase === 'thinking' || sess.phase === 'scoring';
-      const prog = sess.phase === 'report' ? 'Report' : sess.phase === 'intro' ? `${sess.len} questions` : `Question ${Math.max(1, Math.min(sess.main, sess.len))} of ${sess.len}`;
+      const prog = sess.phase === 'report' ? 'Report' : sess.phase === 'claude' ? 'In Claude' : sess.phase === 'intro' ? `${sess.len} questions` : `Question ${Math.max(1, Math.min(sess.main, sess.len))} of ${sess.len}`;
       let body;
       if (sess.phase === 'intro') {
         body = `<div class="iv-intro card">
@@ -114,13 +115,22 @@
             <div class="seg" role="group" aria-label="Number of questions">${[3, 5, 8].map((k) => `<button class="${sess.len === k ? 'on' : ''}" data-act="iv-len" data-v="${k}">${k} questions</button>`).join('')}</div>
             <button class="btn primary lg" data-act="iv-start">${U.icon('play_arrow')}Start interview</button>
           </div>
+          <button class="btn sm ghost claude-btn" data-act="iv-claude" style="margin-top:14px">${U.icon('auto_awesome')}Do it in Claude instead</button>
+        </div>`;
+      } else if (sess.phase === 'claude') {
+        const prompt = TI.ai.claudeInterviewPrompt(n, sess.len, sess.msgs);
+        body = `<div class="iv-intro card cl-card">
+          <h2>Mock interview in Claude</h2>
+          <p class="muted">Claude runs the interview${sess.msgs.length ? ', carrying on from where you are' : ''}: ${sess.len} questions with follow-ups, then a report. Bring the report back here to record the result.</p>
+          ${TI.aiui.claudeSteps(prompt, { tip: 'Tip: on your phone, Claude\'s voice mode makes it feel like a real interview. At the end, copy Claude\'s last message (with the JSON report).' })}
+          <div class="row" style="gap:8px;justify-content:center;margin-top:12px"><button class="btn ghost" data-act="iv-back">Back</button><button class="btn primary" data-act="iv-readclaude">${U.icon('input')}Read report</button></div>
         </div>`;
       } else if (sess.phase === 'report') {
         body = reportHtml(n);
       } else {
         body = `<div class="iv-chat" id="iv-chat">${sess.msgs.map(bubble).join('')}
           ${busy ? `<div class="iv-msg ai typing"><span></span><span></span><span></span>${sess.phase === 'scoring' ? '<em>Scoring your interview…</em>' : ''}</div>` : ''}
-          ${sess.phase === 'error' ? `<div class="cx-err">${U.icon('error')}<span>${U.esc(sess.err)} <button class="btn sm" data-act="iv-retry">Try again</button></span></div>` : ''}
+          ${sess.phase === 'error' ? `<div class="cx-err">${U.icon('error')}<span>${U.esc(sess.err)}</span></div><div class="row" style="gap:8px"><button class="btn sm" data-act="iv-retry">${U.icon('refresh')}Try again</button><button class="btn sm claude-btn" data-act="iv-claude">${U.icon('auto_awesome')}Do it in Claude instead</button></div>` : ''}
         </div>`;
       }
       const composer = sess.phase === 'chat' || sess.phase === 'thinking' || sess.phase === 'error' ? `<div class="iv-compose">
@@ -190,6 +200,18 @@
         TI.ui.toast(list.length ? `${U.plural(list.length, 'card')} added to “${n.title}”` : 'Those questions are already in your cards', { icon: 'style' });
       },
       'iv-again': () => { const id = sess.nodeId; newSession(id); rerender(); },
+      'iv-claude': () => { stopVoice(); sess.prevPhase = sess.phase === 'error' ? 'chat' : sess.phase; sess.phase = 'claude'; rerender(); },
+      'iv-back': () => { sess.phase = sess.msgs.length ? 'chat' : 'intro'; rerender(); },
+      copy: () => { const n = sel.node(sess.nodeId); if (n) TI.aiui.copyPrompt(TI.ai.claudeInterviewPrompt(n, sess.len, sess.msgs)); },
+      'iv-readclaude': () => {
+        const n = sel.node(sess.nodeId); if (!n) return;
+        const ta = document.getElementById('cl-reply'); const err = document.getElementById('cl-err');
+        try {
+          const rep = TI.ai.parseClaudeReport(ta ? ta.value : '');
+          sess.report = rep; sess.via = 'Claude'; sess.phase = 'report';
+          TI.ai.reportNote(n, rep, [], 'in Claude'); rerender();
+        } catch (e) { if (err) err.innerHTML = `<div class="cx-err" style="margin-top:8px">${U.icon('error')}<span>${U.esc(e.message)}</span></div>`; }
+      },
     },
   };
   const actions = () => TI.store.actions;

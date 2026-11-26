@@ -61,7 +61,7 @@ function makeEnv(state) {
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => state.props[k] || null, setProperty: (k, v) => { state.props[k] = v; }, deleteProperty: (k) => { delete state.props[k]; } }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock: () => true, releaseLock: () => {} }) },
     ContentService: { MimeType: { JSON: 'application/json' }, createTextOutput: (s) => { const o = { content: s, mime: 'text/plain', setMimeType(m) { o.mime = m; return o; }, getContent: () => s }; return o; } },
-    Utilities: { getUuid: () => require('crypto').randomUUID(), formatDate: (d, tz, f) => f === 'HH:mm' ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` },
+    Utilities: { sleep: () => {}, getUuid: () => require('crypto').randomUUID(), formatDate: (d, tz, f) => f === 'HH:mm' ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` },
     Logger: { log: (...a) => console.log('[Logger]', ...a) },
     ScriptApp: { getService: () => ({ getUrl: () => 'http://localhost/exec' }) },
     // No network from here: AI calls get a canned answer so the dev server works offline

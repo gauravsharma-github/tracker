@@ -27,12 +27,13 @@
       if (!title) return null;
       const o = { title, done: !!(x.done || x.completed), children };
       if (x.stage != null && !Number.isNaN(+x.stage)) { o.stage = Math.max(0, Math.min(5, +x.stage)); o.done = o.stage > 0; }
+      if (Array.isArray(x.mcqs)) o.mcqs = x.mcqs.filter((m) => m && m.q && Array.isArray(m.options) && m.options.length >= 2 && +m.correct >= 0 && +m.correct < m.options.length).map((m) => ({ q: String(m.q), options: m.options.map(String).slice(0, 6), correct: +m.correct, why: m.why ? String(m.why) : '' }));
       return o;
     };
     if (Array.isArray(v)) return v.map(toNode).filter(Boolean);
     const ck = CHILD_KEYS.find((k) => Array.isArray(v[k]));
     // { title: 'My exam', child: [...] } keeps its title (used as the project name)
-    if (ck && TITLE_KEYS.some((k) => typeof v[k] === 'string')) { const n = toNode(v); if (n) n.root = true; return n ? [n] : []; }
+    if (ck && TITLE_KEYS.some((k) => typeof v[k] === 'string')) { const n = toNode(v); if (n) { n.root = true; if (Array.isArray(v.sources)) n.sources = v.sources.filter((x) => x && typeof x.url === 'string' && /^https?:\/\//i.test(x.url)).map((x) => ({ name: String(x.name || ''), url: x.url, note: String(x.note || '') })); } return n ? [n] : []; }
     if (ck) return v[ck].map(toNode).filter(Boolean);
     const n = toNode(v);
     return n ? [n] : [];
@@ -91,7 +92,7 @@
 
   // { title: 'Project', child: [...] } → { name: 'Project', subjects: [...] }; plain lists stay as subjects.
   function unwrap(tree) {
-    if (tree.length === 1 && (tree[0].root || tree[0].children.length >= 2)) return { name: tree[0].title, subjects: tree[0].children };
+    if (tree.length === 1 && (tree[0].root || tree[0].children.length >= 2)) return { name: tree[0].title, subjects: tree[0].children, sources: tree[0].sources || [] };
     return { name: null, subjects: tree };
   }
 

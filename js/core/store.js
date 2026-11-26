@@ -6,7 +6,7 @@
 
   const state = {
     ready: false, rev: 0,
-    projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [], stages: [],
+    projects: [], subjects: [], nodes: [], sessions: [], cards: [], reviews: [], notes: [], blocks: [], attachments: [], stages: [], mcqs: [], quizzes: [], sources: [],
     settings: {}, account: {},
     ui: Object.assign({ expandedSubjects: {}, expandedNodes: {}, dashFilter: 'all', notesFilter: 'all', notesQuery: '', insightsRange: 'week', insightsScope: 'project', shareOpts: null }, TI.storage.get('ui', {})),
   };
@@ -60,6 +60,7 @@
     notes(sid) { return state.notes.filter((n) => !sid || n.subjectId === sid).sort((a, b) => (b.pinned - a.pinned) || b.updatedAt - a.updatedAt); },
     // Notes attached to exactly this subject (nodeId null) or this node
     notesOn(subjectId, nodeId = null) { return state.notes.filter((n) => n.subjectId === subjectId && (n.nodeId || null) === (nodeId || null)).sort((a, b) => (b.pinned - a.pinned) || b.updatedAt - a.updatedAt); },
+    sourcesOf(pid) { return state.sources.filter((x) => x.projectId === pid).sort((a, b) => (a.order || 0) - (b.order || 0)); },
     attachment(id) { return state.attachments.find((a) => a.id === id) || null; },
     // Files attached to exactly this subject (nodeId null) or this node
     attachmentsOn(subjectId, nodeId = null, kind = null) { return state.attachments.filter((a) => a.subjectId === subjectId && (a.nodeId || null) === (nodeId || null) && (!kind || a.kind === kind)).sort((a, b) => a.createdAt - b.createdAt); },
@@ -86,10 +87,10 @@
   // ---------------- Actions ----------------
   const actions = {
     async boot() {
-      api.onRemoteData((d) => { Object.assign(state, d); if (!state.stages) state.stages = []; bump(); actions.migrateStages(); });
+      api.onRemoteData((d) => { Object.assign(state, d); ['stages', 'mcqs', 'quizzes', 'sources'].forEach((k) => { if (!state[k]) state[k] = []; }); bump(); actions.migrateStages(); });
       const d = await api.loadAll();
       Object.assign(state, d, { ready: true });
-      if (!state.stages) state.stages = [];
+      ['stages', 'mcqs', 'quizzes', 'sources'].forEach((k) => { if (!state[k]) state[k] = []; });
       bump();
       actions.migrateStages();
     },
@@ -98,7 +99,7 @@
       const d = await api.loadAll();
       TI.ops.COLLECTIONS.forEach((c) => { state[c] = []; });
       Object.assign(state, d, { ready: true });
-      if (!state.stages) state.stages = [];
+      ['stages', 'mcqs', 'quizzes', 'sources'].forEach((k) => { if (!state[k]) state[k] = []; });
       if (TI.timer && TI.timer.state.subjectId && !sel.subject(TI.timer.state.subjectId)) TI.timer.reset();
       bump();
     },
@@ -133,7 +134,10 @@
       const drop = (coll, f) => { const ids = state[coll].filter(f).map((x) => x.id); state[coll] = state[coll].filter((x) => !f(x)); if (ids.length) api.remove(coll, ids).catch(fail); };
       dropAttachments((a) => sids.has(a.subjectId));
       drop('nodes', (n) => sids.has(n.subjectId));
+      drop('sources', (x) => x.projectId === id);
       drop('stages', (l) => sids.has(l.subjectId));
+      drop('mcqs', (m) => sids.has(m.subjectId));
+      drop('quizzes', (q) => sids.has(q.subjectId));
       drop('cards', (c) => sids.has(c.subjectId));
       drop('reviews', (r) => sids.has(r.subjectId));
       drop('notes', (n) => sids.has(n.subjectId));
@@ -179,6 +183,8 @@
       dropAttachments((a) => a.subjectId === id);
       drop('nodes', (n) => n.subjectId === id);
       drop('stages', (l) => l.subjectId === id);
+      drop('mcqs', (m) => m.subjectId === id);
+      drop('quizzes', (q) => q.subjectId === id);
       drop('cards', (c) => c.subjectId === id);
       drop('reviews', (r) => r.subjectId === id);
       drop('notes', (n) => n.subjectId === id);
@@ -191,7 +197,7 @@
     // ---- Syllabus nodes ----
     // items: [{ title, done?, children? }] or strings
     addNodes(subjectId, parentId, items, silent = false) {
-      const created = [];
+      const created = []; const qs = [];
       const add = (list, pid, fresh = false) => {
         let order = fresh ? 0 : nextOrder(TI.stats.children(state, subjectId, pid));
         list.forEach((it) => {
@@ -202,6 +208,7 @@
           const stg = leaf ? Math.max(0, Math.min(5, t.stage != null ? +t.stage || 0 : t.done ? 1 : 0)) : 0;
           const n = { id: U.uid('n_'), subjectId, parentId: pid || null, title: t.title.trim(), done: stg === 5, doneAt: stg === 5 ? Date.now() : null, stage: stg, stageDue: stg >= 1 && stg < 5 ? U.today() : null, order: order++, due: null, createdAt: Date.now() };
           state.nodes.push(n); created.push(n);
+          if (leaf && t.mcqs && t.mcqs.length) t.mcqs.forEach((m, mi) => qs.push({ id: U.uid('q_'), nodeId: n.id, subjectId, q: m.q, options: m.options, correct: m.correct, why: m.why || '', createdAt: Date.now() + mi, updatedAt: Date.now() + mi }));
           if (t.children && t.children.length) add(t.children, n.id, true);
         });
       };
@@ -209,19 +216,75 @@
       if (created.length) touchSubject(subjectId);
       bump();
       if (created.length) api.createMany('nodes', created).catch(fail);
+      if (qs.length) { state.mcqs.push(...qs); api.createMany('mcqs', qs).catch(fail); }
       if (!silent && parentId) { state.ui.expandedNodes = { ...state.ui.expandedNodes, [parentId]: 1 }; saveUi(); }
       return created;
     },
     updateNode(id, patch) { const n = sel.node(id); if (!n) return; Object.assign(n, patch); touchSubject(n.subjectId); bump(); api.update('nodes', id, patch).catch(fail); },
+    // ---- Study sources of a project (links to courses, videos, docs, books) ----
+    addSources(projectId, list) {
+      const now = Date.now(); let order = state.sources.filter((x) => x.projectId === projectId).reduce((m, x) => Math.max(m, x.order || 0), 0) + 1;
+      const items = list.filter((x) => x && x.url).map((x, i) => ({ id: U.uid('r_'), projectId, name: String(x.name || '').trim() || x.url, url: String(x.url).trim(), note: String(x.note || '').trim(), order: order++, createdAt: now + i, updatedAt: now + i }));
+      if (!items.length) return [];
+      state.sources.push(...items); touchProject(projectId); bump();
+      api.createMany('sources', items).catch(fail);
+      return items;
+    },
+    updateSource(id, patch) {
+      const x = state.sources.find((s) => s.id === id); if (!x) return;
+      Object.assign(x, patch, { updatedAt: Date.now() }); touchProject(x.projectId); bump();
+      api.update('sources', id, { ...patch, updatedAt: x.updatedAt }).catch(fail);
+    },
+    deleteSource(id) {
+      const x = state.sources.find((s) => s.id === id); if (!x) return;
+      state.sources = state.sources.filter((s) => s.id !== id); touchProject(x.projectId); bump();
+      api.remove('sources', id).catch(fail);
+    },
+    moveSource(id, dir) {
+      const x = state.sources.find((s) => s.id === id); if (!x) return;
+      const list = sel.sourcesOf(x.projectId); const i = list.indexOf(x); const j = i + dir;
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      const patches = []; list.forEach((s, k) => { if (s.order !== k + 1) { s.order = k + 1; patches.push({ id: s.id, order: k + 1 }); } });
+      bump(); if (patches.length) api.updateMany('sources', patches).catch(fail);
+    },
+    // ---- Quiz questions (multiple choice) and quiz attempts (see js/core/quiz.js) ----
+    addMcqs(list) {
+      const now = Date.now();
+      const items = list.map((m, i) => ({ id: U.uid('q_'), nodeId: m.nodeId, subjectId: m.subjectId || (sel.node(m.nodeId) || {}).subjectId, q: m.q.trim(), options: m.options.map((o) => String(o).trim()), correct: m.correct, why: (m.why || '').trim(), createdAt: now + i, updatedAt: now + i }));
+      state.mcqs.push(...items);
+      new Set(items.map((m) => m.subjectId)).forEach((sid) => touchSubject(sid));
+      bump(); if (items.length) api.createMany('mcqs', items).catch(fail);
+      return items;
+    },
+    updateMcq(id, patch) {
+      const m = state.mcqs.find((x) => x.id === id); if (!m) return;
+      Object.assign(m, patch, { updatedAt: Date.now() }); touchSubject(m.subjectId); bump();
+      api.update('mcqs', id, { ...patch, updatedAt: m.updatedAt }).catch(fail);
+    },
+    deleteMcq(id) {
+      const m = state.mcqs.find((x) => x.id === id); if (!m) return;
+      state.mcqs = state.mcqs.filter((x) => x.id !== id); touchSubject(m.subjectId); bump();
+      api.remove('mcqs', id).catch(fail);
+    },
+    recordQuiz(a) {
+      const n = sel.node(a.nodeId); const subj = n && sel.subject(n.subjectId);
+      const item = { id: U.uid('z_'), nodeId: a.nodeId, subjectId: n ? n.subjectId : a.subjectId, projectId: subj ? subj.projectId : null, stage: a.stage, score: a.score, total: a.total, passed: !!a.passed, at: Date.now(), answers: a.answers || [] };
+      state.quizzes.push(item); if (n) touchSubject(n.subjectId); bump();
+      api.create('quizzes', item).catch(fail);
+      return item;
+    },
     // ---- Five-stage mastery (see js/core/stages.js) ----
     // Complete the next stage of a topic. result only for the interview test: 'pass' | 'shaky' | 'fail'
-    completeStage(id, { result = '', early = false } = {}) {
+    completeStage(id, { result = '', early = false, quiz = null, noquiz = false } = {}) {
       const n = sel.node(id); if (!n) return null;
       const ST = TI.stages; const k = ST.stageOf(n) + 1; if (k > ST.N) return null;
       const res = k === 4 ? (result || 'pass') : '';
       const o = ST.outcome(n, k, res);
       const now = Date.now(); const subj = sel.subject(n.subjectId);
       const log = { id: U.uid('g_'), nodeId: n.id, subjectId: n.subjectId, projectId: subj ? subj.projectId : null, stage: k, result: res, at: now, early: !!early, toStage: o.stage, prevStage: ST.stageOf(n), prevDue: n.stageDue || null, prevDone: !!n.done, prevDoneAt: n.doneAt || null };
+      if (quiz) { log.quizScore = quiz.score; log.quizTotal = quiz.total; log.quizId = quiz.id; }
+      if (noquiz) log.noquiz = true;
       const patch = { stage: o.stage, stageDue: o.stageDue, done: o.stage === ST.N, doneAt: o.stage === ST.N ? now : null };
       Object.assign(n, patch); state.stages.push(log);
       touchSubject(n.subjectId); bump();
@@ -242,7 +305,7 @@
     // Mark Learn (stage 1) done for every not-started topic under a unit / chapter
     learnAll(id) {
       const n = sel.node(id); if (!n) return 0;
-      const leaves = TI.stats.descendants(state, id).filter((d) => !TI.stats.children(state, d.subjectId, d.id).length && TI.stages.stageOf(d) === 0);
+      const leaves = TI.stats.descendants(state, id).filter((d) => !TI.stats.children(state, d.subjectId, d.id).length && TI.stages.stageOf(d) === 0 && TI.quiz.bank(state, d.id).length < TI.quiz.MIN_BANK);
       if (!leaves.length) return 0;
       const now = Date.now(); const subj = sel.subject(n.subjectId); const due = U.addDaysKey(U.today(), TI.stages.GAP[0]);
       const logs = []; const patches = [];
@@ -299,6 +362,10 @@
       const cardFix = state.cards.filter((c) => set.has(c.nodeId)); cardFix.forEach((c) => { c.nodeId = null; });
       const logIds = state.stages.filter((l) => set.has(l.nodeId)).map((l) => l.id);
       state.stages = state.stages.filter((l) => !set.has(l.nodeId));
+      const mcqIds = state.mcqs.filter((m) => set.has(m.nodeId)).map((m) => m.id); state.mcqs = state.mcqs.filter((m) => !set.has(m.nodeId));
+      const quizIds = state.quizzes.filter((q) => set.has(q.nodeId)).map((q) => q.id); state.quizzes = state.quizzes.filter((q) => !set.has(q.nodeId));
+      if (mcqIds.length) api.remove('mcqs', mcqIds).catch(fail);
+      if (quizIds.length) api.remove('quizzes', quizIds).catch(fail);
       bump(); api.remove('nodes', ids).catch(fail);
       if (logIds.length) api.remove('stages', logIds).catch(fail);
       if (cardFix.length) api.updateMany('cards', cardFix.map((c) => ({ id: c.id, nodeId: null }))).catch(fail);

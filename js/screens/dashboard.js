@@ -65,6 +65,7 @@
           <div class="grow"><div class="stat-label" style="margin:0">Today</div><div style="font-size:24px;font-weight:600" class="tabular">${U.fmtDur(todaySec, { noDays: true })}</div><div class="small muted">Goal ${U.fmtMin(state.settings.dailyGoalMin)}</div></div></div>
         ${resume ? `<button class="btn ${t.isActive() ? 'tint' : 'primary'} block" style="margin-top:14px;--c:${resume.color}" data-act="${t.isActive() ? 'nav' : 'subject-play'}" data-to="/subject/${resume.id}" data-id="${resume.id}">${U.icon(t.isActive() ? 'graphic_eq' : 'play_arrow', 'fill')}${t.isActive() ? 'Back to timer' : `Focus on ${U.esc(U.truncate(resume.name, 22))}`}</button>` : ''}
       </div>
+      ${TI.sources.panel(p)}
       <div class="card">
         <div class="card-head"><h3>Up next</h3><div class="actions"><button class="btn sm ghost" data-act="nav" data-to="/schedule">Schedule</button></div></div>
         ${upcoming.length ? `<div class="list">${upcoming.map((b) => { const s = sel.subject(b.subjectId); return `<div class="list-item click" data-act="nav" data-to="/schedule" style="--c:${s ? s.color : 'var(--primary)'}"><span class="lead">${U.icon('event')}</span><div class="txt"><div class="ttl">${U.esc(b.title || (s ? s.name : ''))}</div><div class="sub">${U.fmtHmLabel(b.start, state.settings.h12)} – ${U.fmtHmLabel(b.end, state.settings.h12)} · ${U.esc(s ? s.name : '')}</div></div></div>`; }).join('')}</div>`
@@ -139,6 +140,7 @@
           ${head}
           <div class="card datestrip-card">${TI.ui.dateStrip({ count: ctx.desktop ? 21 : 14, fn: (d) => st.projectDay(state, p.id, d), color: p.color })}</div>
           ${ctx.wide ? '' : TI.heatmap.render(p.id, { weeks: ctx.desktop ? 30 : 20 })}
+          ${ctx.wide ? '' : TI.sources.panel(p)}
           ${kpis}
           ${filters}
           <div class="subject-list">${cards}</div>

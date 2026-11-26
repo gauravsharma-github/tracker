@@ -14,10 +14,11 @@
 
   function checkLimit() { if (!sel.canAddProject()) { TI.screens.pro.open('projects'); return false; } return true; }
 
-  function createFrom(name, category, tree, templateId = null) {
+  function createFrom(name, category, tree, templateId = null, sources = []) {
     if (!checkLimit()) return;
     if (!tree.length) { TI.ui.toast('Nothing to import', { icon: 'error' }); return; }
     const p = actions.importProject({ name, category, tree, templateId });
+    if (sources && sources.length) actions.addSources(p.id, sources);
     const c = TI.outline.count(tree);
     TI.ui.toast(`${p.name} added · ${c.top} subjects, ${c.leaves} topics`, { icon: 'check_circle', duration: 4000 });
     TI.router.go('/project');
@@ -63,7 +64,7 @@
             // A single top-level item (e.g. the exam name) wrapping the subjects is unwrapped
             const u = TI.outline.unwrap(tree);
             const name = $('#ai-pname').value.trim() || u.name || 'My project';
-            a.close(); createFrom(name, $('#ai-cat').value, u.subjects);
+            a.close(); createFrom(name, $('#ai-cat').value, u.subjects, null, u.sources);
           },
           async file() {
             const f = await U.pickFile('.json,application/json,.txt,text/plain'); if (!f) return;

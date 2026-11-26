@@ -7,7 +7,7 @@
 //   { op: 'remove',     coll, ids: [] }
 //   { op: 'settings',   patch }
 (function (TI) {
-  const COLLECTIONS = ['projects', 'subjects', 'nodes', 'sessions', 'cards', 'reviews', 'notes', 'blocks', 'attachments', 'stages'];
+  const COLLECTIONS = ['projects', 'subjects', 'nodes', 'sessions', 'cards', 'reviews', 'notes', 'blocks', 'attachments', 'stages', 'mcqs', 'quizzes', 'sources'];
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   function apply(db, op) {

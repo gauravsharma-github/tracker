@@ -41,9 +41,13 @@
   function ticks(n) {
     const ST = TI.stages; const s = ST.stageOf(n); const ds = ST.dueState(n);
     let h = '';
+    const fs = s < TI.quiz.QUIZ_STAGES ? TI.quiz.failState(state, n) : null;
     for (let k = 0; k < ST.N; k++) {
-      const cls = k < s ? 'done' : k === s ? `next ${ds === 'over' ? 'over' : ds === 'due' ? 'due' : ''}` : 'later';
-      h += `<button class="check-btn stg ${cls}" data-act="stage-tick" data-id="${n.id}" data-k="${k}" title="${U.esc(ST.tooltip(state, n, k))}" aria-label="${U.esc(ST.tooltip(state, n, k))}">${U.icon('check')}</button>`;
+      let cls = k < s ? 'done' : k === s ? `next ${ds === 'over' ? 'over' : ds === 'due' ? 'due' : ''}` : 'later';
+      let tip = ST.tooltip(state, n, k);
+      if (k === s && fs) { cls = 'failed'; tip = `${ST.NAMES[k]} · quiz ${fs.score}/${fs.total} on ${U.fmtDate(fs.at)} – needs 80% · ${Date.now() < fs.retryAt ? `retry after ${U.fmtTime(fs.retryAt)}` : 'retry now'}`; }
+      else if (k === s && k < TI.quiz.QUIZ_STAGES && TI.quiz.bank(state, n.id).length >= TI.quiz.MIN_BANK) tip = tip.replace('click when done', 'click to take the quiz');
+      h += `<button class="check-btn stg ${cls}" data-act="stage-tick" data-id="${n.id}" data-k="${k}" title="${U.esc(tip)}" aria-label="${U.esc(tip)}">${U.icon('check')}</button>`;
     }
     return `<div class="stg-ticks">${h}</div>`;
   }
@@ -73,6 +77,7 @@
       { icon: 'subdirectory_arrow_right', label: 'Add sub-topics', onClick: () => TI.forms.topicForm(n.subjectId, n.id) },
       { icon: 'edit', label: 'Rename', onClick: async () => { const v = await TI.ui.promptDialog({ title: 'Rename', value: n.title }); if (v && v.trim()) actions.updateNode(n.id, { title: v.trim() }); } },
       ...(TI.stats.children(state, n.subjectId, n.id).length ? [] : [
+        { icon: 'quiz', label: `Quiz questions (${TI.quiz.bank(state, n.id).length})`, onClick: () => TI.mcq.bankSheet(n.id) },
         { icon: 'timeline', label: 'Stage history', onClick: () => historySheet(n) },
         ...(TI.stages.logsOf(state, n.id).length ? [{ icon: 'undo', label: `Undo last stage`, onClick: () => undo(n.id) }] : []),
         { icon: 'style', label: `Interview cards (${topicCards(n).length})`, onClick: () => TI.screens.cards.addSheet(n.subjectId, 'single', null, n.id) },
@@ -154,9 +159,41 @@
       return;
     }
     if (s === 3) { testSheet(n); return; }
+    if (s < TI.quiz.QUIZ_STAGES) { quizGate(n); return; }
     const e = await earlyOk(n); if (!e.ok) return;
     const r = actions.completeStage(id, { early: e.early });
     if (r) afterStage(n, r);
+  }
+
+  // Learn / Revision 1 / Revision 2: pass the topic's quiz (80%) to complete the stage
+  async function quizGate(n) {
+    const ST = TI.stages; const Q = TI.quiz; const name = ST.NAMES[ST.stageOf(n)];
+    const fs = Q.failState(state, n);
+    if (fs && Date.now() < fs.retryAt) {
+      TI.ui.dialog({ title: `Retry after ${U.fmtTime(fs.retryAt)}`, html: `<p>Your last ${U.esc(name)} quiz was ${fs.score}/${fs.total} (80% needed). Revise the topic first – you can try again after ${U.esc(U.fmtTime(fs.retryAt))}${U.dayKey(fs.retryAt) !== U.today() ? ' tomorrow' : ''}.</p>`,
+        buttons: [{ label: 'Review answers', value: () => { setTimeout(() => reviewSheet(n, fs), 50); return true; } }, { label: 'OK', kind: 'primary', primary: true, value: () => true }] });
+      return;
+    }
+    const have = Q.bank(state, n.id).length;
+    if (have < Q.MIN_BANK) {
+      const choice = await TI.ui.dialog({ title: `${name} needs a quiz`, html: `<p>“${U.esc(n.title)}” has ${have ? `only ${U.plural(have, 'quiz question')}` : 'no quiz questions'}. Add at least ${Q.MIN_BANK} to take the ${U.esc(name)} quiz (80% to pass).</p><p class="small muted">Or tick it without a quiz – the stage history will show it wasn't tested.</p>`,
+        buttons: [{ label: 'Tick without quiz', value: () => 'tick' }, { label: 'Cancel', value: () => null }, { label: 'Add questions', kind: 'primary', primary: true, value: () => 'add' }] });
+      if (choice === 'add') TI.mcq.bankSheet(n.id);
+      if (choice === 'tick') { const e = await earlyOk(n); if (!e.ok) return; const r = actions.completeStage(n.id, { early: e.early, noquiz: true }); if (r) afterStage(n, r); }
+      return;
+    }
+    const e = await earlyOk(n); if (!e.ok) return;
+    TI.router.go(`/quiz/${n.id}${e.early ? '?early=1' : ''}`);
+  }
+
+  function reviewSheet(n, att) {
+    const byId = new Map(TI.quiz.bank(state, n.id).map((m) => [m.id, m]));
+    const rows = (att.answers || []).map((x, i) => {
+      const m = byId.get(x.id); if (!m) return '';
+      return `<div class="qz-rev ${x.ok ? 'ok' : 'bad'}"><div class="qz-rev-h">${U.icon(x.ok ? 'check_circle' : 'cancel')}<b>${i + 1}. ${U.esc(m.q)}</b></div>
+        ${x.ok ? '' : `<div class="qz-ans bad">Your answer: ${U.esc(x.pick || 'not answered')}</div>`}<div class="qz-ans ok">${x.ok ? '' : 'Right answer: '}${U.esc(m.options[m.correct])}</div>${m.why ? `<div class="qz-why">${U.esc(m.why)}</div>` : ''}</div>`;
+    }).join('');
+    TI.ui.openSheet({ title: `Last quiz · ${n.title} · ${att.score}/${att.total}`, size: 'lg', html: rows || '<p class="muted">Nothing to show.</p>', footer: '<button class="btn" data-close>Close</button>' });
   }
 
   function undo(id) {
@@ -181,6 +218,7 @@
           ${cards.length ? `<button class="btn sm ghost" data-act="gen">${U.icon('auto_awesome')}More questions with AI</button>` : ''}
           <button class="btn sm ghost" data-act="cards">${U.icon('add')}${cards.length ? 'Add cards yourself' : 'Write cards yourself'}</button>
         </div>
+        <div class="small muted" style="margin-top:6px">Gemini busy? Use your Claude chat: <button class="link-btn" data-act="clq">questions</button> · <button class="link-btn" data-act="cli">mock interview</button></div>
         <div class="small muted" style="margin:18px 0 8px">Record the result</div>
         <div class="test-res">
           <button class="test-opt pass" data-act="res" data-r="pass">${U.icon('verified')}<b>Pass</b><span>Re-practice in ${ST.GAP[3]} days</span></button>
@@ -193,6 +231,8 @@
           start() { a.close(); TI.router.go(`/study/${n.subjectId}?topic=${n.id}&test=1`); },
           cards() { a.close(); TI.screens.cards.addSheet(n.subjectId, 'single', null, n.id); },
           mock() { a.close(); TI.aiui.mockInterview(n.id); },
+          clq() { a.close(); TI.aiui.claudeQuestionsSheet(n.id, { then: () => testSheet(sel.node(n.id)) }); },
+          cli() { a.close(); TI.router.go(`/interview/${n.id}?claude=1`); },
           gen() { a.close(); TI.aiui.questionsSheet(n.id, { then: () => testSheet(sel.node(n.id)) }); },
           res(el) { a.close(); recordTest(n.id, el.dataset.r, early); },
         });
@@ -210,7 +250,8 @@
     const rows = logs.map((l) => {
       const label = l.stage === 4 && l.result ? `Interview test · ${l.result}` : ST.NAMES[l.stage - 1];
       const ic = l.result === 'fail' ? 'replay' : l.result === 'shaky' ? 'help' : 'check_circle';
-      return `<div class="list-item"><span class="lead" style="--c:${l.result === 'fail' ? 'var(--danger)' : l.result === 'shaky' ? 'var(--warning)' : 'var(--success)'}">${U.icon(ic)}</span><div class="txt"><div class="ttl">${U.esc(label)}${l.early ? ' <span class="small muted">(early)</span>' : ''}${l.migrated ? ' <span class="small muted">(from the old tick)</span>' : ''}</div><div class="sub">${U.esc(U.fmtDay(U.dayKey(l.at)))} · ${U.esc(U.fmtTime ? U.fmtTime(l.at) : '')}</div></div></div>`;
+      const qz = l.quizTotal ? ` · quiz ${l.quizScore}/${l.quizTotal}` : l.noquiz ? ' · without quiz' : '';
+      return `<div class="list-item"><span class="lead" style="--c:${l.result === 'fail' ? 'var(--danger)' : l.result === 'shaky' ? 'var(--warning)' : 'var(--success)'}">${U.icon(ic)}</span><div class="txt"><div class="ttl">${U.esc(label)}${qz}${l.early ? ' <span class="small muted">(early)</span>' : ''}${l.migrated ? ' <span class="small muted">(from the old tick)</span>' : ''}</div><div class="sub">${U.esc(U.fmtDay(U.dayKey(l.at)))} · ${U.esc(U.fmtTime ? U.fmtTime(l.at) : '')}</div></div></div>`;
     }).join('');
     const next = s >= ST.N ? `${U.icon('military_tech')} Mastered` : s === 0 ? `Next: ${ST.NAMES[0]}` : `Next: ${ST.NAMES[s]} · ${n.stageDue ? (ST.dueState(n) === 'over' ? 'overdue since ' : 'due ') + U.fmtDay(n.stageDue) : ''}`;
     TI.ui.openSheet({
@@ -226,9 +267,10 @@
   // Units / chapters: Learn-done for all their not-started topics
   async function check(id) {
     const n = sel.node(id); if (!n) return;
-    const todo = TI.stats.descendants(state, id).filter((d) => !TI.stats.children(state, d.subjectId, d.id).length && TI.stages.stageOf(d) === 0).length;
-    if (!todo) { TI.ui.toast('Every topic here has started. Tick the stages topic by topic.', { icon: 'info' }); return; }
-    if (!(await TI.ui.confirmDialog(`Mark Learn done for ${U.plural(todo, 'topic')}?`, `All not-started topics in “${n.title}” get stage 1 (Learn) done today. Revision 1 is then due tomorrow.`, 'Mark Learn done', 'primary'))) return;
+    const fresh = TI.stats.descendants(state, id).filter((d) => !TI.stats.children(state, d.subjectId, d.id).length && TI.stages.stageOf(d) === 0);
+    const todo = fresh.filter((d) => TI.quiz.bank(state, d.id).length < TI.quiz.MIN_BANK).length;
+    if (!todo) { TI.ui.toast(fresh.length ? 'The not-started topics here have quizzes – take each topic\'s Learn quiz.' : 'Every topic here has started. Tick the stages topic by topic.', { icon: 'info', duration: 4500 }); return; }
+    if (!(await TI.ui.confirmDialog(`Mark Learn done for ${U.plural(todo, 'topic')}?`, `Not-started topics in “${n.title}” without a quiz get stage 1 (Learn) done today; Revision 1 is then due tomorrow.${fresh.length - todo ? ` ${U.plural(fresh.length - todo, 'topic')} with quiz questions are left for their quiz.` : ''}`, 'Mark Learn done', 'primary'))) return;
     const c = actions.learnAll(id);
     TI.ui.toast(`Learn done for ${U.plural(c, 'topic')} · Revision 1 due tomorrow`, { icon: 'check_circle' });
   }
@@ -243,5 +285,5 @@
     'node-add': (el) => TI.forms.topicForm(el.dataset.subject, el.dataset.parent || null),
   };
 
-  TI.tree = { render, handlers, startOn, ticks, testSheet, recordTest, historySheet, undo };
+  TI.tree = { render, handlers, startOn, ticks, testSheet, recordTest, historySheet, undo, quizGate, reviewSheet };
 })(window.TI);

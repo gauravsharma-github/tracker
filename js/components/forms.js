@@ -16,24 +16,28 @@
     if (!project && !sel.canAddProject()) return TI.screens.pro.open('projects');
     let color = project ? project.color : TI.config.palette[0];
     let cat = project ? project.category : 'exam';
+    let qlen = project && TI.quiz.SIZES.includes(+project.quizLen) ? +project.quizLen : 10;
     const cats = TI.config.projectCategories;
     const api = ui().openSheet({
       title: project ? 'Edit exam / project' : 'New exam / project',
       html: `<div class="field"><label>Name</label><input class="input" id="pf-name" maxlength="60" value="${U.esc(project ? project.name : '')}" placeholder="e.g. SSC CGL 2027, React course" autofocus /></div>
         <div class="field"><label>Type</label><div class="chips" id="pf-cats">${cats.map((c) => `<button class="chip ${c.id === cat ? 'on' : ''}" data-act="cat" data-v="${c.id}">${U.icon(c.icon, 'sm')}${c.label}</button>`).join('')}</div></div>
         <div class="field"><label>Colour</label><div id="pf-colors">${ui().colorPicker(color)}</div></div>
+        <div class="field"><label>Quiz length (Learn, Revision 1, Revision 2 · 80% to pass)</label><div class="seg" id="pf-qlen">${TI.quiz.SIZES.map((k) => `<button data-act="qlen" data-v="${k}" class="${k === qlen ? 'on' : ''}">${k} questions</button>`).join('')}</div></div>
         ${project ? '' : `<div class="card" style="background:var(--surface-2);margin-top:6px"><div class="row"><span class="ms" style="color:var(--primary-2)">auto_awesome</span><div class="grow small">Want the syllabus filled in? <b>Pick from 1000+ templates</b> or paste one from ChatGPT.</div><button class="btn sm outline" data-act="templates">Browse</button></div></div>`}`,
       footer: `<button class="btn ghost" data-close>Cancel</button><button class="btn primary" data-act="save">${project ? 'Save' : 'Create'}</button>`,
       onMount(a) {
         onAct(a, {
           cat(t) { cat = t.dataset.v; a.el.querySelectorAll('#pf-cats .chip').forEach((c) => c.classList.toggle('on', c.dataset.v === cat)); },
+          qlen(t) { qlen = +t.dataset.v; a.el.querySelectorAll('#pf-qlen button').forEach((b) => b.classList.toggle('on', b === t)); },
           'pick-color'(t) { color = t.dataset.color; a.el.querySelector('#pf-colors').innerHTML = ui().colorPicker(color); },
           templates() { a.close(); TI.router.go('/templates'); },
           save() {
             const name = a.el.querySelector('#pf-name').value.trim();
             if (!name) { a.el.querySelector('#pf-name').focus(); return; }
-            if (project) { actions.updateProject(project.id, { name, category: cat, color }); ui().toast('Saved', { icon: 'check' }); } else {
+            if (project) { actions.updateProject(project.id, { name, category: cat, color, quizLen: qlen }); ui().toast('Saved', { icon: 'check' }); } else {
               const p = actions.addProject({ name, category: cat, color });
+              if (qlen !== 10) actions.updateProject(p.id, { quizLen: qlen });
               actions.setActiveProject(p.id);
               TI.router.go('/project');
               ui().toast(`${name} created – add your first subject`, { icon: 'check_circle' });
@@ -242,6 +246,7 @@
     items.push({ sep: true });
     items.push({ icon: 'add', label: 'Add exam / project', onClick: () => TI.router.go('/templates') });
     items.push({ icon: 'grid_view', label: 'All projects (Dashboard)', onClick: () => TI.router.go('/') });
+    if (cur) items.push({ icon: 'quiz', label: 'Quiz questions spreadsheet (CSV)', onClick: () => TI.mcq.csvSheet({ projectId: cur.id }) });
     items.push({ icon: 'tune', label: 'Manage projects', onClick: () => TI.router.go('/projects') });
     ui().openMenu(anchor, items, { align: 'left' });
   }

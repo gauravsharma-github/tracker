@@ -10,7 +10,7 @@
       .then((text) => {
         const u = TI.outline.unwrap(TI.outline.parse(text));
         if (!u.subjects.length) throw new Error('The link has no subjects in it.');
-        Object.assign(job, { status: 'ready', tree: u.subjects, name: u.name || 'Shared template' });
+        Object.assign(job, { status: 'ready', tree: u.subjects, name: u.name || 'Shared template', sources: u.sources || [] });
       })
       .catch((e) => Object.assign(job, { status: 'error', error: e.message || 'This link could not be read.' }))
       .finally(() => TI.store.bump());
@@ -51,9 +51,9 @@
         if (job.status !== 'ready') return;
         const name = (document.getElementById('imp-name') || {}).value || job.name;
         const cat = (document.getElementById('imp-cat') || {}).value || 'custom';
-        const tree = job.tree;
+        const tree = job.tree; const sources = job.sources;
         job = { key: null, status: 'idle' };
-        TI.screens.templates.createFrom(name.trim() || 'Shared template', cat, tree);
+        TI.screens.templates.createFrom(name.trim() || 'Shared template', cat, tree, null, sources);
       },
     },
   };

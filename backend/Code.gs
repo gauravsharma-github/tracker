@@ -18,11 +18,11 @@
  * "@OnlyCurrentDoc" limits the script to this one spreadsheet.
  */
 
-var BACKEND_VERSION = 4;
+var BACKEND_VERSION = 6;
 
 // Column types: s = text, n = number, t = timestamp (ms), b = true/false, j = JSON text
 var SCHEMA = {
-  projects: [['id', 's'], ['name', 's'], ['category', 's'], ['color', 's'], ['templateId', 's'], ['order', 'n'], ['archived', 'b'], ['createdAt', 't'], ['updatedAt', 't']],
+  projects: [['id', 's'], ['name', 's'], ['category', 's'], ['color', 's'], ['templateId', 's'], ['order', 'n'], ['archived', 'b'], ['createdAt', 't'], ['updatedAt', 't'], ['quizLen', 'n']],
   subjects: [['id', 's'], ['projectId', 's'], ['name', 's'], ['color', 's'], ['order', 'n'], ['createdAt', 't']],
   nodes: [['id', 's'], ['subjectId', 's'], ['parentId', 's'], ['title', 's'], ['done', 'b'], ['doneAt', 't'], ['due', 's'], ['order', 'n'], ['createdAt', 't'], ['stage', 'n'], ['stageDue', 's']],
   sessions: [['id', 's'], ['projectId', 's'], ['subjectId', 's'], ['nodeId', 's'], ['start', 't'], ['duration', 'n'], ['mode', 's'], ['manual', 'b']],
@@ -33,7 +33,12 @@ var SCHEMA = {
   // v2: PDF / audio files kept in your GitHub repo (this tab only stores where they are)
   attachments: [['id', 's'], ['projectId', 's'], ['subjectId', 's'], ['nodeId', 's'], ['kind', 's'], ['name', 's'], ['path', 's'], ['repo', 's'], ['branch', 's'], ['sha', 's'], ['size', 'n'], ['mime', 's'], ['duration', 'n'], ['createdAt', 't'], ['updatedAt', 't']],
   // v3: five-stage mastery – one row per tick (Learn, Revision 1, Revision 2, Interview test, Re-practice)
-  stages: [['id', 's'], ['nodeId', 's'], ['subjectId', 's'], ['projectId', 's'], ['stage', 'n'], ['result', 's'], ['at', 't'], ['early', 'b'], ['toStage', 'n'], ['prevStage', 'n'], ['prevDue', 's'], ['prevDone', 'b'], ['prevDoneAt', 't']],
+  // v5: quiz questions (multiple choice) and quiz attempts for the Learn / Revision 1 / Revision 2 stages
+  // v6: study sources (links) of each project
+  sources: [['id', 's'], ['projectId', 's'], ['name', 's'], ['url', 's'], ['note', 's'], ['order', 'n'], ['createdAt', 't'], ['updatedAt', 't']],
+  mcqs: [['id', 's'], ['nodeId', 's'], ['subjectId', 's'], ['q', 's'], ['options', 'j'], ['correct', 'n'], ['why', 's'], ['createdAt', 't'], ['updatedAt', 't']],
+  quizzes: [['id', 's'], ['nodeId', 's'], ['subjectId', 's'], ['projectId', 's'], ['stage', 'n'], ['score', 'n'], ['total', 'n'], ['passed', 'b'], ['at', 't'], ['answers', 'j']],
+  stages: [['id', 's'], ['nodeId', 's'], ['subjectId', 's'], ['projectId', 's'], ['stage', 'n'], ['result', 's'], ['at', 't'], ['early', 'b'], ['toStage', 'n'], ['prevStage', 'n'], ['prevDue', 's'], ['prevDone', 'b'], ['prevDoneAt', 't'], ['quizScore', 'n'], ['quizTotal', 'n'], ['noquiz', 'b']],
 };
 var SETTINGS_TAB = 'settings';
 var NULLABLE = { parentId: 1, nodeId: 1, templateId: 1, due: 1, until: 1, stageDue: 1, prevDue: 1 };
@@ -105,6 +110,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Set Gemini API key (AI features)', 'setGeminiKey')
     .addItem('Choose AI model', 'chooseAiModel')
+    .addItem('Set backup AI models', 'setAiBackups')
     .addItem('Test AI', 'testAi')
     .addToUi();
 }
@@ -113,16 +119,24 @@ function onOpen() {
 // TrackIt sends prompts here; this script adds your Gemini API key (kept in Script Properties, never sent to the
 // browser) and calls the Gemini API. Get a key at https://aistudio.google.com/apikey
 var AI_DEFAULT_MODEL = 'gemini-flash-latest';
+// Tried in order after your main model when it is busy (HTTP 503 "high demand"), over its free limit (429 –
+// free limits are per model) or not available (404). Change with TrackIt › Set backup AI models.
+var AI_DEFAULT_BACKUPS = ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+var AI_TIME_BUDGET_MS = 80000; // stay well inside TrackIt's 2-minute wait
 
 function aiCfg_() {
   var p = PropertiesService.getScriptProperties();
-  return { key: p.getProperty('GEMINI_API_KEY') || '', model: p.getProperty('GEMINI_MODEL') || AI_DEFAULT_MODEL };
+  var fb = p.getProperty('GEMINI_FALLBACK');
+  var backups = fb == null ? AI_DEFAULT_BACKUPS : fb === 'none' ? [] : String(fb).split(',').map(function (x) { return x.trim(); }).filter(String);
+  return { key: p.getProperty('GEMINI_API_KEY') || '', model: p.getProperty('GEMINI_MODEL') || AI_DEFAULT_MODEL, backups: backups };
 }
 
 function aiStatus_() {
   var c = aiCfg_();
-  return { ok: true, configured: !!c.key, model: c.model, provider: 'gemini', version: BACKEND_VERSION };
+  return { ok: true, configured: !!c.key, model: c.model, backups: c.backups, provider: 'gemini', version: BACKEND_VERSION };
 }
+
+var AI_RETRY_ = { 500: 1, 502: 1, 503: 1, 504: 1 };
 
 /** req: { system, contents: [{ role: 'user'|'model', parts: [{ text } | { inline_data: { mime_type, data } }] }], json, temperature, maxTokens } */
 function aiCall_(req) {
@@ -132,19 +146,38 @@ function aiCall_(req) {
   if (req.json) gen.responseMimeType = 'application/json';
   var body = { contents: req.contents || [], generationConfig: gen };
   if (req.system) body.systemInstruction = { parts: [{ text: String(req.system) }] };
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(req.model || c.model) + ':generateContent';
-  var res = UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': c.key }, payload: JSON.stringify(body), muteHttpExceptions: true });
-  var status = res.getResponseCode(); var txt = res.getContentText(); var j = null;
-  try { j = JSON.parse(txt); } catch (e) { j = null; }
-  if (status !== 200) {
-    var msg = (j && j.error && j.error.message) || ('HTTP ' + status);
-    var code = status === 429 ? 'rate_limit' : (status === 400 && /api key/i.test(msg)) || status === 401 || status === 403 ? 'bad_key' : status === 404 ? 'bad_model' : 'ai_error';
-    return { ok: false, code: code, status: status, error: msg };
+  var payload = JSON.stringify(body);
+  // Main model first, then each backup model (no duplicates)
+  var models = [];
+  [req.model || c.model].concat(c.backups).forEach(function (m) { if (m && models.indexOf(m) < 0) models.push(m); });
+  var start = Date.now(); var tried = []; var last = null; var sawBusy = false, sawLimit = false;
+  for (var mi = 0; mi < models.length; mi++) {
+    if (mi && Date.now() - start > AI_TIME_BUDGET_MS) break;
+    var model = models[mi];
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+    for (var attempt = 0; attempt < (mi === 0 ? 2 : 1); attempt++) {
+      if (attempt) Utilities.sleep(2500);
+      var res = UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': c.key }, payload: payload, muteHttpExceptions: true });
+      var status = res.getResponseCode(); var j = null;
+      try { j = JSON.parse(res.getContentText()); } catch (e) { j = null; }
+      if (status === 200) {
+        var cand = j && j.candidates && j.candidates[0];
+        var text = cand && cand.content && cand.content.parts ? cand.content.parts.map(function (p) { return p.thought ? '' : (p.text || ''); }).join('') : '';
+        if (text) return { ok: true, text: text, model: model, fallback: mi > 0, tried: tried, finishReason: cand.finishReason || '', usage: j.usageMetadata || null };
+        last = { status: 200, code: 'empty', msg: 'The AI returned no answer' + (cand && cand.finishReason ? ' (' + cand.finishReason + ')' : '') + '. Try again.' };
+        break; // try the next model
+      }
+      var msg = (j && j.error && j.error.message) || ('HTTP ' + status);
+      if ((status === 400 && /api key/i.test(msg)) || status === 401 || status === 403) return { ok: false, code: 'bad_key', status: status, error: msg };
+      last = { status: status, msg: msg };
+      if (AI_RETRY_[status]) { sawBusy = true; continue; }       // busy: retry (main model) then next model
+      if (status === 429) sawLimit = true;                         // over this model's free limit: next model
+      break;                                                       // 404 / other: next model
+    }
+    tried.push(model + ' (' + (last ? last.status : '?') + ')');
   }
-  var cand = j && j.candidates && j.candidates[0];
-  var text = cand && cand.content && cand.content.parts ? cand.content.parts.map(function (p) { return p.thought ? '' : (p.text || ''); }).join('') : '';
-  if (!text) return { ok: false, code: 'empty', error: 'The AI returned no answer' + (cand && cand.finishReason ? ' (' + cand.finishReason + ')' : '') + '. Try again.' };
-  return { ok: true, text: text, model: req.model || c.model, finishReason: cand.finishReason || '', usage: j.usageMetadata || null };
+  var code = sawBusy ? 'busy' : sawLimit ? 'rate_limit' : last && last.code ? last.code : last && last.status === 404 ? 'bad_model' : 'ai_error';
+  return { ok: false, code: code, status: last ? last.status : 0, error: (last ? last.msg : 'No AI model answered') + ' (tried ' + tried.join(', ') + ')', tried: tried };
 }
 
 function setGeminiKey() {
@@ -167,9 +200,18 @@ function chooseAiModel() {
   testAi();
 }
 
+function setAiBackups() {
+  var ui = SpreadsheetApp.getUi(); var c = aiCfg_();
+  var r = ui.prompt('Backup AI models', 'Tried in order when ' + c.model + ' is busy or over its free limit.\nCurrent: ' + (c.backups.join(', ') || 'none') + '\n\nType model ids separated by commas, "none" for no backups, or leave empty for the defaults.', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  var v = String(r.getResponseText() || '').trim(); var p = PropertiesService.getScriptProperties();
+  if (v) p.setProperty('GEMINI_FALLBACK', v); else p.deleteProperty('GEMINI_FALLBACK');
+  ui.alert('Backup models: ' + (aiCfg_().backups.join(', ') || 'none'));
+}
+
 function testAi() {
   var r = aiCall_({ contents: [{ role: 'user', parts: [{ text: 'Reply with exactly: TrackIt AI is ready' }] }], temperature: 0, maxTokens: 256 });
-  var msg = r.ok ? 'Working ✓  (' + r.model + ')\n\n' + r.text : 'Not working: ' + r.error;
+  var msg = r.ok ? 'Working ✓  (' + r.model + (r.fallback ? ' – a backup model; the main one was busy' : '') + ')\n\n' + r.text : 'Not working: ' + r.error;
   try { SpreadsheetApp.getUi().alert('TrackIt AI', msg + (r.ok ? '\n\nNow deploy a new version (Deploy › Manage deployments › ✏️ › New version) if you have not yet.' : ''), SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) { Logger.log(msg); }
   return r;
 }

@@ -36,7 +36,8 @@
     const m = (e && e.message) || String(e);
     if (e && e.code === 'no_sheet') return m;
     if (e && e.code === 'no_key') return 'AI is not set up yet: in your Google Sheet open TrackIt › Set Gemini API key.';
-    if (e && e.code === 'rate_limit') return 'The free Gemini limit is used up for now. Wait a minute (or until tomorrow for the daily limit) and try again.';
+    if (e && e.code === 'busy') return 'Gemini is very busy right now (high demand) – every model TrackIt tried was busy. Try again in a few minutes, or do it in Claude instead.';
+    if (e && e.code === 'rate_limit') return 'The free Gemini limits are used up for now on every model TrackIt tried. Wait a minute (or until tomorrow for the daily limit), or do it in Claude instead.';
     if (e && e.code === 'bad_key') return 'Gemini rejected the API key. Set it again in your sheet: TrackIt › Set Gemini API key.';
     if (e && e.code === 'bad_model') return 'That Gemini model is not available. In your sheet choose TrackIt › Choose AI model and leave it empty for the default.';
     if (/Unknown operation/i.test(m)) return 'Your sheet script is too old for AI. Update backend/Code.gs to version 4 (see backend/SETUP.md) and deploy a new version.';
@@ -52,7 +53,10 @@
     return parseJson(r.text);
   }
   function parseJson(t) {
-    const s = String(t || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    let s = String(t || '').trim();
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i); // a fenced block anywhere (Claude often adds a sentence around it)
+    if (fence) s = fence[1].trim();
+    s = s.replace(/[\u201c\u201d]/g, (q) => (/^\s*[{[]/.test(s) ? '"' : q)); // smart quotes from some copy/paste paths
     try { return JSON.parse(s); } catch (e) { /* fall through */ }
     const a = s.indexOf('{'); const b = s.lastIndexOf('}');
     if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch (e) { /* ignore */ } }
@@ -94,7 +98,7 @@
   }
 
   // ---------- 1. interview questions ----------
-  async function generateQuestions(n, { count = cfg().count, level = cfg().level, usePdf = false, extra = '', onNote } = {}) {
+  function questionsPrompt(n, { count = cfg().count, level = cfg().level, extra = '' } = {}) {
     const existing = topicCards(n).map((c) => c.front);
     const system = `[task:questions]
 You are a senior interviewer at a product company preparing interview questions so a candidate can practise one topic until they are interview-ready.
@@ -106,15 +110,22 @@ Rules:
 - The answer is what a strong candidate would say: accurate, specific, 2–6 short sentences or bullet points (use "- " bullets), with a concrete example where it helps.
 - Don't repeat or closely rephrase questions the candidate already has.
 Return JSON only: {"questions":[{"q":"question","a":"model answer","type":"concept|scenario|hands-on|design"}]}`;
+    const user = `${context(n)}${existing.length ? `\n\nQuestions the candidate already has (don't repeat):\n${existing.map((q) => `- ${q}`).join('\n')}` : ''}${extra ? `\n\nExtra instructions from the candidate: ${extra}` : ''}`;
+    return { system, user };
+  }
+  const toQuestions = (j) => (Array.isArray(j) ? j : j.questions || []).map((x) => ({ front: String(x.q || x.question || '').trim(), back: String(x.a || x.answer || '').trim(), type: x.type || '' })).filter((x) => x.front && x.back);
+
+  async function generateQuestions(n, { count = cfg().count, level = cfg().level, usePdf = false, extra = '', onNote } = {}) {
+    const { system, user } = questionsPrompt(n, { count, level, extra });
     const parts = [];
     if (usePdf) {
       const pdf = await pdfParts(n, onNote);
       if (pdf.length) { parts.push(...pdf); parts.push({ text: 'The attached PDF(s) are the candidate\'s own study notes for this topic. Base the questions on what they cover, and fill obvious gaps an interviewer would still ask about.' }); }
     }
-    parts.push({ text: `${context(n)}${existing.length ? `\n\nQuestions the candidate already has (don't repeat):\n${existing.map((q) => `- ${q}`).join('\n')}` : ''}${extra ? `\n\nExtra instructions from the candidate: ${extra}` : ''}` });
+    parts.push({ text: user });
     onNote && onNote('Writing questions…');
     const j = await call({ system, contents: [{ role: 'user', parts }], temperature: 0.8 });
-    const list = (Array.isArray(j) ? j : j.questions || []).map((x) => ({ front: String(x.q || x.question || '').trim(), back: String(x.a || x.answer || '').trim(), type: x.type || '' })).filter((x) => x.front && x.back);
+    const list = toQuestions(j);
     if (!list.length) throw new Error('The AI returned no questions. Try again.');
     return list;
   }
@@ -122,23 +133,51 @@ Return JSON only: {"questions":[{"q":"question","a":"model answer","type":"conce
     actions.addCards(n.subjectId, list.map((x) => ({ front: x.front, back: x.back, nodeId: n.id })));
   }
 
-  // Runs in the background when a topic finishes Revision 2 (stage 4 = interview test is next)
+  // Runs in the background when a topic finishes Revision 2 (stage 4 = interview test is next).
+  // If Gemini is busy or the free limit is hit, the topic is queued and retried later (also after a reload).
   const autoBusy = new Set();
-  async function autoFill(nodeId) {
+  const PENDING = 'ai.pending';
+  const pending = () => { const v = TI.storage.get(PENDING); return Array.isArray(v) ? v : []; };
+  const setPending = (a) => TI.storage.set(PENDING, [...new Set(a)]);
+  let retryTimer = null; let retryDelay = 0;
+  function scheduleRetry() {
+    clearTimeout(retryTimer); if (!pending().length) { retryDelay = 0; return; }
+    retryDelay = Math.min(60, retryDelay ? retryDelay * 2 : 3); // minutes: 3, 6, 12 … up to an hour
+    retryTimer = setTimeout(retryPending, retryDelay * 60000);
+  }
+  async function retryPending() {
+    const ids = pending(); if (!ids.length) return;
+    for (const id of ids) { const ok = await autoFill(id, { quiet: true }); if (ok === 'later') break; }
+    scheduleRetry();
+  }
+  async function autoFill(nodeId, { quiet = false } = {}) {
     const n = sel.node(nodeId); const c = cfg();
-    if (!n || !c.auto || autoBusy.has(nodeId) || TI.api.mode() !== 'sheets') return;
-    if (topicCards(n).length >= Math.min(5, c.count)) return;
-    const st = await status(); if (!st.configured) return;
+    const drop = () => setPending(pending().filter((x) => x !== nodeId));
+    if (!n || !c.auto || TI.stages.stageOf(n) !== 3) { drop(); return 'skip'; }
+    if (autoBusy.has(nodeId) || TI.api.mode() !== 'sheets') return 'skip';
+    if (topicCards(n).length >= Math.min(5, c.count)) { drop(); return 'skip'; }
+    const st = await status(!knownReady()); if (!st.configured) return 'skip'; // re-check: the key may have been added since
     autoBusy.add(nodeId);
     try {
       const list = await generateQuestions(n, { usePdf: pdfsOf(n).length > 0 && TI.github.configured() });
-      if (!sel.node(nodeId)) return;
-      saveQuestions(n, list);
+      if (!sel.node(nodeId)) return 'skip';
+      saveQuestions(n, list); drop();
       TI.ui.toast(`${U.plural(list.length, 'interview question')} ready for “${n.title}”`, { icon: 'auto_awesome', duration: 5000, action: { label: 'View', fn: () => TI.router.go(`/cards/${n.subjectId}`) } });
+      return 'ok';
     } catch (e) {
-      TI.ui.toast(`Couldn't prepare interview questions for “${n.title}”: ${friendly(e)}`, { icon: 'error', duration: 6000 });
+      if (e && (e.code === 'busy' || e.code === 'rate_limit' || /timed out|abort/i.test(e.message))) {
+        setPending([...pending(), nodeId]);
+        if (!quiet) TI.ui.toast(`Gemini is busy, so the interview questions for “${n.title}” will be retried automatically in a few minutes.`, { icon: 'schedule', duration: 8000, action: { label: 'Do it in Claude', fn: () => TI.aiui.claudeQuestionsSheet(nodeId) } });
+        scheduleRetry();
+        return 'later';
+      }
+      drop();
+      TI.ui.toast(`Couldn't prepare interview questions for “${n.title}”: ${friendly(e)}`, { icon: 'error', duration: 8000, action: { label: 'Do it in Claude', fn: () => TI.aiui.claudeQuestionsSheet(nodeId) } });
+      return 'error';
     } finally { autoBusy.delete(nodeId); }
   }
+  // Pick up anything left waiting from an earlier visit
+  setTimeout(() => { if (pending().length) retryPending(); }, 15000);
 
   // ---------- 2. mock interviewer ----------
   function interviewerSystem(n, len) {
@@ -168,17 +207,24 @@ ${bank ? `\nQuestion bank:\n${bank}` : ''}`;
     return { say, kind: ['question', 'followup', 'closing'].includes(j.kind) ? j.kind : 'question', main: Number(j.main) || 0 };
   }
 
+  const RUBRIC = `Scoring: give each main question 0–10 (follow-up answers count towards their question). Overall score 0–100.
+Verdict: "pass" = interview-ready (about 75+ and no serious misconception); "shaky" = mostly right but gaps or vague answers (about 50–74); "fail" = major gaps or wrong concepts (below about 50). Unanswered questions score 0.
+For each main question give what was good or missing in one or two sentences, and a concise ideal answer (2–5 short sentences or "- " bullets).`;
+  const REPORT_SHAPE = '{"score":0-100,"verdict":"pass|shaky|fail","summary":"two sentences","strengths":["…"],"gaps":["…"],"questions":[{"q":"question","score":0-10,"feedback":"…","ideal":"…"}],"studyNext":["specific thing to revise"]}';
+
   async function evaluate(n, msgs) {
     const transcript = msgs.map((m) => `${m.role === 'ai' ? 'Interviewer' : 'Candidate'}: ${m.text}`).join('\n');
     const system = `[task:evaluate]
 You are the interviewer. Score this mock interview on one topic, honestly and specifically, like a hiring panel would.
 ${context(n)}
 Level: ${LEVELS[cfg().level] || LEVELS.moderate}
-Scoring: give each main question 0–10 (follow-up answers count towards their question). Overall score 0–100.
-Verdict: "pass" = interview-ready (about 75+ and no serious misconception); "shaky" = mostly right but gaps or vague answers (about 50–74); "fail" = major gaps or wrong concepts (below about 50). Unanswered questions score 0.
-For each main question give what was good or missing in one or two sentences, and a concise ideal answer (2–5 short sentences or "- " bullets).
-Return JSON only: {"score":0-100,"verdict":"pass|shaky|fail","summary":"two sentences","strengths":["…"],"gaps":["…"],"questions":[{"q":"question","score":0-10,"feedback":"…","ideal":"…"}],"studyNext":["specific thing to revise"]}`;
+${RUBRIC}
+Return JSON only: ${REPORT_SHAPE}`;
     const j = await call({ system, contents: [{ role: 'user', parts: [{ text: `Transcript:\n${transcript}` }] }], temperature: 0.2 });
+    return normReport(j);
+  }
+  function normReport(j) {
+    if (!j || typeof j !== 'object' || (j.score == null && !j.verdict)) throw new Error('That doesn\'t look like the interview report. Copy the whole JSON block Claude gave at the end.');
     const score = Math.max(0, Math.min(100, Math.round(Number(j.score) || 0)));
     let verdict = ['pass', 'shaky', 'fail'].includes(j.verdict) ? j.verdict : score >= 75 ? 'pass' : score >= 50 ? 'shaky' : 'fail';
     if (verdict === 'pass' && score < 65) verdict = 'shaky';
@@ -190,7 +236,7 @@ Return JSON only: {"score":0-100,"verdict":"pass|shaky|fail","summary":"two sent
     };
   }
 
-  function reportNote(n, rep, msgs) {
+  function reportNote(n, rep, msgs, via = '') {
     const V = { pass: 'Pass', shaky: 'Shaky', fail: 'Fail' }[rep.verdict];
     const lines = [
       `Score ${rep.score}/100 · ${V}`, '', rep.summary, '',
@@ -198,10 +244,43 @@ Return JSON only: {"score":0-100,"verdict":"pass|shaky|fail","summary":"two sent
       rep.gaps.length ? '\nGaps:\n' + rep.gaps.map((x) => `- ${x}`).join('\n') : '',
       rep.studyNext.length ? '\nRevise next:\n' + rep.studyNext.map((x) => `- ${x}`).join('\n') : '',
       '\nQuestions:', ...rep.questions.map((q, i) => `\n${i + 1}. ${q.q} (${q.score}/10)\n${q.feedback}\nIdeal: ${q.ideal}`),
-      '\n— Transcript —', ...msgs.map((m) => `${m.role === 'ai' ? 'Interviewer' : 'Me'}: ${m.text}`),
+      msgs.length ? '\n— Transcript —' : '', ...msgs.map((m) => `${m.role === 'ai' ? 'Interviewer' : 'Me'}: ${m.text}`),
     ];
-    actions.addNote({ subjectId: n.subjectId, nodeId: n.id, title: `Mock interview · ${U.fmtDate(new Date())} · ${rep.score}/100 (${V})`, body: lines.filter((x) => x !== '').join('\n') });
+    actions.addNote({ subjectId: n.subjectId, nodeId: n.id, title: `Mock interview${via ? ` (${via})` : ''} · ${U.fmtDate(new Date())} · ${rep.score}/100 (${V})`, body: lines.filter((x) => x !== '').join('\n') });
   }
 
-  TI.ai = { LEVELS, LEVEL_NAMES, cfg, status, knownReady, friendly, call, generateQuestions, saveQuestions, autoFill, interviewTurn, evaluate, reportNote, topicCards, pdfsOf };
+  // ---------- "Do it in Claude instead" (copy a prompt into your Claude chat, paste the answer back) ----------
+  function claudeQuestionsPrompt(n, opts = {}) {
+    const { system, user } = questionsPrompt(n, opts);
+    const pdfs = pdfsOf(n);
+    return `${system.replace('[task:questions]\n', '')}
+
+${user}
+${pdfs.length ? `\nIf I've attached PDF notes (${pdfs.map((a) => a.name).join(', ')}), base the questions on what they cover and fill obvious gaps an interviewer would still ask about.\n` : ''}
+Reply with only the JSON in one \`\`\`json code block – no other text – so I can paste it into my study app.`;
+  }
+  function claudeInterviewPrompt(n, len = cfg().interviewLen, sofar = []) {
+    const bank = topicCards(n).map((c, i) => `${i + 1}. ${c.front}\n   Expected: ${c.back.replace(/\n+/g, ' ')}`).join('\n');
+    return `Run a mock technical interview with me on ONE topic, like a friendly but rigorous interviewer at a product company.
+${context(n)}
+Level: ${LEVELS[cfg().level] || LEVELS.moderate}
+
+How to run it:
+- Ask ${len} main questions, ONE per message, and wait for my answer each time. Keep questions short and natural, as said out loud.
+- ${bank ? 'Use the question bank below as your main source (rephrase, don\'t read verbatim); add your own if needed.' : 'Write your own questions; mix concepts, real-world scenarios and hands-on questions.'}
+- If an answer is vague, incomplete or wrong, ask ONE short follow-up before moving on (follow-ups don't count as main questions).
+- Don't teach or reveal answers during the interview – at most "Okay." or "Got it." before the next question. If I say I don't know, move on.
+- After my answer to question ${len} (or if I type END), stop and give me the report.
+
+The report: first two or three friendly sentences, then the result as ONE \`\`\`json code block in exactly this shape (I'll paste it into my study app):
+${REPORT_SHAPE}
+${RUBRIC}
+${bank ? `\nQuestion bank:\n${bank}\n` : ''}${sofar.length ? `\nWe already started; here is the interview so far (count these questions):\n${sofar.map((m) => `${m.role === 'ai' ? 'Interviewer' : 'Me'}: ${m.text}`).join('\n')}\n\nContinue from here with the next question.` : '\nStart now with question 1.'}`;
+  }
+  const NOJSON = "Couldn't find the JSON block in that. Copy Claude's whole reply (it should contain a ```json block) and paste it here.";
+  const parseClaudeJson = (text) => { try { return parseJson(text); } catch (e) { throw new Error(NOJSON); } };
+  function parseClaudeQuestions(text) { const list = toQuestions(parseClaudeJson(text)); if (!list.length) throw new Error('No questions found. Copy Claude\'s whole reply (the JSON block) and paste it here.'); return list; }
+  function parseClaudeReport(text) { return normReport(parseClaudeJson(text)); }
+
+  TI.ai = { claudeQuestionsPrompt, claudeInterviewPrompt, parseClaudeQuestions, parseClaudeReport, LEVELS, LEVEL_NAMES, cfg, status, knownReady, friendly, call, generateQuestions, saveQuestions, autoFill, interviewTurn, evaluate, reportNote, topicCards, pdfsOf };
 })(window.TI);

@@ -56,6 +56,8 @@ Treat the connection code like a password. If you set up attachments (below) on 
 3. Reload the sheet. **TrackIt › Set Gemini API key**, paste the key, **OK**. Google asks you to allow the script to "connect to an external service" the first time – allow it. A test message should say *Working ✓*.
 4. In TrackIt: **Settings › AI › Check** should say *AI ready*.
 
+**Backup models:** when the main model is busy or over its free limit, the script tries backup models in turn. Change the list with **TrackIt › Set backup AI models** (comma-separated model ids, `none` for no backups, empty for the defaults).
+
 The key lives only in the script's properties. To remove it, run **Set Gemini API key** again with an empty box. To use another model: **TrackIt › Choose AI model**.
 
 ## 6. Attachments: PDFs and audio in a private GitHub repo (optional)
@@ -76,6 +78,10 @@ When the token expires, uploads and downloads say *GitHub rejected the token*: g
 ## Updating the script later
 
 Edit `Code.gs`, save, then **Deploy › Manage deployments → ✏️ (edit) → Version: New version → Deploy**. Editing the existing deployment keeps the same `/exec` URL, so your devices stay connected. (A brand-new deployment would give a new URL.)
+
+**Updating to version 6** (adds a `sources` tab for each project's study links): same four steps as below. Optional – with older versions sources still sync through the script's generic handling.
+
+**Updating to version 5** (adds `mcqs` and `quizzes` tabs for the quiz questions and attempts, and the project's quiz length): same four steps as below. Version 5 includes everything in versions 3 and 4.
 
 **Updating to version 4** (adds the AI proxy used by interview questions and mock interviews, plus a TrackIt › Set Gemini API key menu): same four steps as below, then section 7. Version 4 includes everything in version 3.
 
@@ -110,6 +116,7 @@ Times are stored as milliseconds since 1970 (UTC). `=EPOCHTODATE(E2, 2)` turns o
 | *Update your Google Sheet script* (when attaching) | Follow **Updating from version 1 to version 2** above. |
 | *Your sheet script is too old for AI* | Update to version 4 and deploy a new version. |
 | *AI is not set up yet* | TrackIt › Set Gemini API key in the sheet (section 7). |
+| *Gemini is very busy right now (high demand)* | Google's servers are overloaded for a while. The script already retries and then tries a lighter model (`gemini-flash-lite-latest`); automatic interview questions are queued and retried every few minutes. Mock interviews: try again shortly. |
 | *The free Gemini limit is used up* | Wait a minute (per-minute limit) or until the next day (daily limit). |
 | *GitHub rejected the token* | The token is wrong or expired. Make a new one (step 6) and paste it in **Settings › Attachments**. |
 | *Repository not found* | Check the username and repository name, and that the token was given access to that repository. |

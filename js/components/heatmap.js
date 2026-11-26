@@ -7,6 +7,7 @@
   const { state } = TI.store;
   const KINDS = [
     ['stages', 'topic stage done', 'topic stages done'],
+    ['quizzes', 'quiz taken', 'quizzes taken'],
     ['sessions', 'study session', 'study sessions'],
     ['reviews', 'card reviewed', 'cards reviewed'],
     ['cards', 'card created', 'cards created'],
@@ -31,6 +32,7 @@
       d.total++; d[kind] = (d[kind] || 0) + 1; total++;
     };
     (state.stages || []).forEach((l) => add(l.projectId || subj.get(l.subjectId), l.at, 'stages'));
+    (state.quizzes || []).forEach((q) => add(q.projectId || subj.get(q.subjectId), q.at, 'quizzes'));
     state.sessions.forEach((s) => add(s.projectId || subj.get(s.subjectId), s.start, 'sessions'));
     state.reviews.forEach((r) => add(subj.get(r.subjectId), r.at, 'reviews'));
     state.cards.forEach((c) => add(subj.get(c.subjectId), c.createdAt, 'cards'));
@@ -113,6 +115,7 @@
       html: `<p>Each square is one day. Every one of these counts as one activity on the day it happened:</p>
         <ul class="steps small">
           <li><b>Topic stage done</b> – each of a topic's five ticks (Learn, Revision 1, Revision 2, Interview test, Re-practice), including a Shaky or Failed test</li>
+          <li><b>Quiz taken</b> – each Learn / Revision quiz attempt, passed or not</li>
           <li><b>Study session</b> – each timer or manually logged session</li>
           <li><b>Card reviewed</b> – each flashcard you rate while reviewing</li>
           <li><b>Card created</b> – each new flashcard</li>

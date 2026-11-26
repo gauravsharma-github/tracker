@@ -452,3 +452,27 @@
 .iv-qs.low { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
 .iv-ideal { margin: 0 14px 14px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--surface-2); font-size: 14px; line-height: 1.55; }
 .iv-ideal b { display: block; font-size: 12px; color: var(--text-3); margin-bottom: 3px; }
+
+/* ---------- Stage quiz ---------- */
+.qz-wrap { max-width: 720px; margin: 0 auto; padding: 22px 16px 32px; }
+.qz-prog { height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; margin-bottom: 22px; }
+.qz-prog i { display: block; height: 100%; background: var(--c); transition: width .25s var(--ease); }
+.qz-q { font-size: 20px; font-weight: 600; line-height: 1.4; margin-bottom: 18px; }
+.qz-opts { display: flex; flex-direction: column; gap: 10px; }
+.qz-opt { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--r-md); background: var(--surface); border: 1.5px solid var(--line); text-align: left; font-size: 15.5px; transition: border-color .12s, background .12s; }
+.qz-opt:hover { border-color: color-mix(in srgb, var(--c) 50%, var(--line)); }
+.qz-opt.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, var(--surface)); }
+.qz-l { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--surface-3); }
+.qz-opt.on .qz-l { background: var(--c); color: #fff; }
+.qz-result { text-align: center; padding: 22px 16px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); }
+.qz-big .ms { font-size: 56px; }
+.qz-result.pass .qz-big, .qz-result.pass .qz-verdict { color: var(--success); }
+.qz-result.fail .qz-big, .qz-result.fail .qz-verdict { color: var(--danger); }
+.qz-result h2 { margin: 4px 0; font-size: 28px; }
+.qz-verdict { font-weight: 600; margin-bottom: 6px; }
+.qz-rev { border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--r-md); padding: 12px 14px; margin-top: 8px; background: var(--surface); }
+.qz-rev.ok { border-left-color: var(--success); } .qz-rev.bad { border-left-color: var(--danger); }
+.qz-rev-h { display: flex; gap: 8px; align-items: flex-start; }
+.qz-rev.ok .qz-rev-h .ms { color: var(--success); } .qz-rev.bad .qz-rev-h .ms { color: var(--danger); }
+.qz-ans { margin: 6px 0 0 30px; font-size: 14px; } .qz-ans.ok { color: var(--success); } .qz-ans.bad { color: var(--danger); }
+.qz-why { margin: 6px 0 0 30px; font-size: 13.5px; color: var(--text-2); }

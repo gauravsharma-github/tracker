@@ -12,10 +12,14 @@
       const kids = walk(sid, n.id);
       const o = { title: n.title, child: kids };
       // progress: stage 1–5 of the five-stage ladder (done = mastered, for older apps)
+      // quiz questions travel with the syllabus (templates and progress alike)
+      if (!kids.length) { const qs = TI.quiz.bank(state, n.id); if (qs.length) o.mcqs = qs.map((m) => ({ q: m.q, options: m.options, correct: m.correct, ...(m.why ? { why: m.why } : {}) })); }
       if (withProgress && !kids.length && TI.stages.stageOf(n) > 0) { o.stage = TI.stages.stageOf(n); if (o.stage === TI.stages.N) o.done = true; }
       return o;
     });
-    return { title: p.name, child: sel.subjects(pid).map((s) => ({ title: s.name, child: walk(s.id, null) })) };
+    const out = { title: p.name, child: sel.subjects(pid).map((s) => ({ title: s.name, child: walk(s.id, null) })) };
+    const src = sel.sourcesOf(pid); if (src.length) out.sources = src.map((x) => ({ name: x.name, url: x.url, ...(x.note ? { note: x.note } : {}) }));
+    return out;
   }
 
   function counts(obj) {
