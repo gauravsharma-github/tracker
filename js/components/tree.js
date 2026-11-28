@@ -90,6 +90,16 @@
       { icon: 'attach_file', label: 'Attach PDF / audio', onClick: () => TI.attach.pick(n.subjectId, n.id) },
       ...(TI.attach.countOn(n.subjectId, n.id) ? [{ icon: 'folder_open', label: `Attachments (${TI.attach.countOn(n.subjectId, n.id)})`, onClick: () => TI.attach.manage(n.subjectId, n.id) }] : []),
       { sep: true },
+      { icon: 'drive_file_move', label: 'Move to…', onClick: () => TI.moveui.moveSheet({ nodeId: n.id }) },
+      { icon: 'folder_special', label: 'Make it a subject', onClick: async () => {
+        const kids = TI.stats.children(state, n.subjectId, n.id).length;
+        if (!(await TI.ui.confirmDialog(`Make “${n.title}” a subject?`, `${kids ? 'Its topics become the new subject\'s topics.' : 'The new subject gets this one topic, with its stages, quizzes, cards and files.'} It's placed right after ${s ? `“${s.name}”` : 'its subject'}. ${TI.restructure.summary({ nodeId: n.id })} move with it.`, 'Make subject', 'primary'))) return;
+        const idx = s ? sel.subjects(s.projectId).findIndex((x) => x.id === s.id) + 1 : null;
+        const r = TI.restructure.nodeToSubject(n.id, { projectId: s.projectId, index: idx });
+        TI.moveui.shortcut(r, `“${n.title}” is now a subject`);
+      } },
+      ...(n.parentId ? [{ icon: 'format_indent_decrease', label: 'Move up a level', onClick: () => TI.moveui.shortcut(TI.restructure.outdent(n.id), `“${n.title}” moved up a level`) }] : []),
+      ...((pu) => (pu ? [{ icon: 'format_indent_increase', label: `Move into “${U.truncate(pu.title, 24)}”`, onClick: () => TI.moveui.shortcut(TI.restructure.indent(n.id), `“${n.title}” moved into “${pu.title}”`) }] : []))(TI.restructure.prevUnit(n.id)),
       { icon: 'arrow_upward', label: 'Move up', onClick: () => actions.moveNode(n.id, -1) },
       { icon: 'arrow_downward', label: 'Move down', onClick: () => actions.moveNode(n.id, 1) },
       { sep: true },

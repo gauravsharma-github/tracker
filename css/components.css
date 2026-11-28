@@ -450,11 +450,15 @@ kbd { font-family: var(--font); font-size: 11px; padding: 1px 6px; border-radius
 .check-btn.stg { width: 26px; height: 26px; }
 .check-btn.stg .ms { font-size: 15px; }
 .check-btn.stg.later { opacity: .45; cursor: default; }
-.check-btn.stg.next { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-2); color: var(--text-2); }
-.check-btn.stg.next:hover { background: color-mix(in srgb, var(--c, var(--primary)) 18%, transparent); color: var(--text); }
-.check-btn.stg.next.due { box-shadow: inset 0 0 0 2px var(--warning); }
-.check-btn.stg.next.over { box-shadow: inset 0 0 0 2px var(--danger); }
-@media (max-width: 520px) { .stg-ticks { gap: 3px; } .check-btn.stg { width: 22px; height: 22px; } .check-btn.stg .ms { font-size: 13px; } .node .acts { gap: 4px; } }
+/* The next stage keeps the same tick as the others; a ring drawn OUTSIDE the circle marks it
+   (amber = due today, red = overdue), so the check mark itself never shifts or gets covered */
+.stg-ticks { gap: 6px; padding: 0 2px; }
+.check-btn.stg.next { color: var(--text-2); outline: 1.5px solid var(--line-2); outline-offset: 1.5px; }
+.check-btn.stg.next:hover { background: color-mix(in srgb, var(--c, var(--primary)) 22%, var(--surface-3)); color: var(--text); }
+.check-btn.stg.next.due { outline-color: var(--warning); outline-width: 2px; }
+.check-btn.stg.next.over { outline-color: var(--danger); outline-width: 2px; }
+.check-btn.stg.next:focus-visible { outline-color: var(--primary); }
+@media (max-width: 520px) { .stg-ticks { gap: 5px; } .check-btn.stg { width: 22px; height: 22px; } .check-btn.stg .ms { font-size: 13px; } .node .acts { gap: 4px; } }
 .test-res { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .test-opt { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 14px 8px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--line); text-align: center; }
 .test-opt .ms { font-size: 24px; }
@@ -541,3 +545,18 @@ kbd { font-family: var(--font); font-size: 11px; padding: 1px 6px; border-radius
 .src-item:hover .src-go { opacity: 1; }
 .src-more { flex: none; opacity: .55; } .src-item:hover .src-more { opacity: 1; }
 @media (hover: none) { .src-more { opacity: 1; } }
+
+/* ---------- Move to… picker ---------- */
+.mv-list { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-md); padding: 4px; }
+.mv-opt { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r-sm); cursor: pointer; }
+.mv-opt:hover { background: var(--surface-2); }
+.mv-opt input { accent-color: var(--primary); width: 16px; height: 16px; flex: none; }
+.mv-opt:has(input:checked) { background: color-mix(in srgb, var(--primary) 14%, transparent); }
+.mv-opt span { display: flex; flex-direction: column; min-width: 0; }
+.mv-opt small { font-size: 12px; color: var(--text-3); font-weight: 400; }
+.mv-opt b { font-weight: 600; }
+.mv-opt.sub { padding-top: 6px; padding-bottom: 6px; } .mv-opt.sub > span { display: block; }
+.mv-opt.sub .ms { color: var(--text-3); font-size: 16px; }
+.mv-opt.special .ms { color: var(--primary-2); }
+.mv-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.mv-new { padding: 2px 12px 10px 42px; }
