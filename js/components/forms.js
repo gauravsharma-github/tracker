@@ -246,7 +246,7 @@
     items.push({ sep: true });
     items.push({ icon: 'add', label: 'Add exam / project', onClick: () => TI.router.go('/templates') });
     items.push({ icon: 'grid_view', label: 'All projects (Dashboard)', onClick: () => TI.router.go('/') });
-    if (cur) items.push({ icon: 'quiz', label: 'Quiz questions spreadsheet (CSV)', onClick: () => TI.mcq.csvSheet({ projectId: cur.id }) });
+    if (cur) items.push({ icon: 'quiz', label: 'Quiz questions (CSV)', onClick: () => TI.mcq.csvSheet({ projectId: cur.id }) });
     items.push({ icon: 'tune', label: 'Manage projects', onClick: () => TI.router.go('/projects') });
     ui().openMenu(anchor, items, { align: 'left' });
   }

@@ -54,7 +54,7 @@
       { icon: 'playlist_add', label: 'Add units / topics', onClick: () => TI.forms.topicForm(s.id, null) },
       { icon: 'more_time', label: 'Log time manually', onClick: () => TI.forms.logTimeForm({ subjectId: s.id }) },
       { icon: 'attach_file', label: 'Attach PDF / audio to subject', onClick: () => TI.attach.pick(s.id, null) },
-      { icon: 'quiz', label: 'Quiz questions spreadsheet (CSV)', onClick: () => TI.mcq.csvSheet({ subjectId: s.id }) },
+      { icon: 'quiz', label: 'Quiz questions (CSV)', onClick: () => TI.mcq.csvSheet({ subjectId: s.id }) },
       { icon: 'drive_file_move', label: 'Move into another subject…', onClick: () => TI.moveui.moveSheet({ subjectId: s.id }) },
       ...(TI.attach.countOn(s.id, null) ? [{ icon: 'folder_open', label: `Subject attachments (${TI.attach.countOn(s.id, null)})`, onClick: () => TI.attach.manage(s.id, null) }] : []),
       { icon: 'sticky_note_2', label: 'Add subject note', onClick: () => TI.screens.notes.edit(null, { subjectId: s.id, nodeId: null }) },

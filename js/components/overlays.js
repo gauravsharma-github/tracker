@@ -121,8 +121,11 @@
     }, 0);
     return m;
   }
-  window.addEventListener('resize', closeMenu);
-  window.addEventListener('scroll', closeMenu, true);
+  // Close an open menu when the PAGE scrolls or the window width changes – but not when the menu itself
+  // is scrolled (long menus scroll inside), and not for height-only resizes (mobile address bar showing/hiding)
+  let lastW = window.innerWidth;
+  window.addEventListener('resize', () => { if (window.innerWidth !== lastW) { lastW = window.innerWidth; closeMenu(); } });
+  window.addEventListener('scroll', (e) => { if (openMenuEl && e.target instanceof Node && openMenuEl.contains(e.target)) return; closeMenu(); }, true);
 
   function toast(msg, { icon = 'info', action = null, duration = 3200 } = {}) {
     const wrap = document.getElementById('toasts');
